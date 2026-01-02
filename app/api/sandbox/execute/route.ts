@@ -18,17 +18,22 @@ export async function POST(request: Request) {
       error: userError,
     } = await supabase.auth.getUser()
 
-    // Get server instance ID if account_id and server_id are provided
+    // Get server instance ID if server_id is provided
     let server_instance_id: string | undefined
-    if (user && account_id && server_id) {
-      const { data: instance } = await supabase
+    if (user && server_id) {
+      let query = supabase
         .from("mcp_server_instances")
         .select("id")
         .eq("user_id", user.id)
         .eq("server_id", server_id)
-        .eq("account_id", account_id)
         .eq("status", "running")
-        .single()
+      
+      // If account_id is provided, use it; otherwise find any running instance
+      if (account_id) {
+        query = query.eq("account_id", account_id)
+      }
+      
+      const { data: instance } = await query.limit(1).maybeSingle()
 
       if (instance) {
         server_instance_id = instance.id
@@ -71,11 +76,65 @@ export async function POST(request: Request) {
 
     const executionTime = Date.now() - startTime
 
+    // Ensure output is JSON-serializable and safe for JSONB storage
+    // Always use an object (never null) for JSONB compatibility
+    let outputToStore: any = {
+      stdout: "",
+      stderr: "",
+      return_value: null,
+      error: null,
+    }
+    try {
+      // Create a sanitized version of the result
+      const sanitizedResult: any = {
+        stdout: String(sandboxResult.stdout || ""),
+        stderr: String(sandboxResult.stderr || ""),
+        return_value: null,
+        error: sandboxResult.error || null,
+      }
+
+      // Try to serialize return_value if it exists
+      if (sandboxResult.return_value !== null && sandboxResult.return_value !== undefined) {
+        try {
+          // First, try to stringify to check if it's valid JSON
+          const serialized = JSON.stringify(sandboxResult.return_value)
+          // Then parse it back to ensure it's a clean, serializable object
+          sanitizedResult.return_value = JSON.parse(serialized)
+        } catch {
+          // If it can't be serialized, convert to string
+          sanitizedResult.return_value = String(sandboxResult.return_value)
+        }
+      }
+
+      // Final check: ensure the entire object is JSON-serializable
+      JSON.stringify(sanitizedResult)
+      outputToStore = sanitizedResult
+    } catch (serializeError) {
+      // If serialization fails completely, store a minimal safe version
+      console.error("[Sandbox] Failed to serialize result:", serializeError)
+      outputToStore = {
+        stdout: String(sandboxResult.stdout || ""),
+        stderr: String(sandboxResult.stderr || ""),
+        return_value: null,
+        error: sandboxResult.error || "Output could not be serialized to JSON",
+      }
+    }
+    
+    // Final safety check: ensure outputToStore is always a valid object
+    if (!outputToStore || typeof outputToStore !== 'object' || Array.isArray(outputToStore)) {
+      outputToStore = {
+        stdout: String(sandboxResult.stdout || ""),
+        stderr: String(sandboxResult.stderr || ""),
+        return_value: null,
+        error: sandboxResult.error || "Invalid output format",
+      }
+    }
+
     const { data: finalExecution, error: updateError } = await supabase
       .from("sandbox_executions")
       .update({
         status,
-        output: sandboxResult,
+        output: outputToStore,
         error,
         execution_time_ms: executionTime,
         completed_at: new Date().toISOString(),

@@ -39,6 +39,19 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
             # Import nexus_sdk if available
             try:
                 import nexus_sdk
+                # Initialize MCP if server_instance_id is available
+                mcp_instance = None
+                if server_instance_id:
+                    try:
+                        # Get the base URL from environment or use default
+                        base_url = nexus_api_url or os.environ.get('NEXUS_API_URL', 'http://localhost:3000')
+                        # Create MCP instance with explicit parameters using the class directly
+                        from nexus_sdk.mcp import MCP as MCPClass
+                        mcp_instance = MCPClass(base_url=base_url, server_instance_id=server_instance_id)
+                    except Exception as e:
+                        # Log the error but don't fail - mcp just won't be available
+                        print(f"Warning: Could not initialize MCP: {e}", file=sys.stderr)
+                
                 namespace = {
                     "__builtins__": {
                         "print": print,
@@ -60,6 +73,8 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
                     "nexus_sdk": nexus_sdk,
                     "google": nexus_sdk.google,
                 }
+                if mcp_instance:
+                    namespace["mcp"] = mcp_instance
             except ImportError:
                 # Fallback if nexus_sdk not available
                 namespace = {
@@ -87,7 +102,14 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
             
             # Capture return value if there's a main() function
             if "main" in namespace and callable(namespace["main"]):
-                result["return_value"] = namespace["main"]()
+                return_val = namespace["main"]()
+                # Ensure return value is JSON-serializable
+                try:
+                    json.dumps(return_val)
+                    result["return_value"] = return_val
+                except (TypeError, ValueError):
+                    # If not serializable, convert to string
+                    result["return_value"] = str(return_val)
         
         result["stdout"] = stdout_buffer.getvalue()
         result["stderr"] = stderr_buffer.getvalue()

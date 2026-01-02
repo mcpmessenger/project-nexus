@@ -69,10 +69,19 @@ export function TerminalView({ initialCode = "", selectedTool = null }: Terminal
     setExecution(null)
 
     try {
+      const payload: any = { code }
+      
+      // Include tool and server information if available
+      if (selectedTool) {
+        payload.tool_id = selectedTool.id
+        payload.server_id = selectedTool.server_id
+        // account_id will be determined server-side from the user's active account
+      }
+
       const res = await fetch("/api/sandbox/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
+        body: JSON.stringify(payload),
       })
 
       const result = await res.json()

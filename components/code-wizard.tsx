@@ -79,9 +79,21 @@ function generatePythonCode(toolName: string, formData: Record<string, any>): st
     "# Tool input",
     `tool_input = ${pythonDict}`,
     "",
-    "# Print the input",
+    "# Call the tool",
     `print(f'Executing ${toolName} with input:')`,
     "print(json.dumps(tool_input, indent=2))",
+    "",
+    "# Make the tool call",
+    "try:",
+    "    result = mcp.call(",
+    `        "${toolName}",`,
+    "        tool_input",
+    "    )",
+    "    print('\\nTool result:')",
+    "    print(json.dumps(result, indent=2))",
+    "except Exception as e:",
+    "    print(f'\\nError calling tool: {e}')",
+    "    raise",
   ]
 
   return codeLines.join("\n")
