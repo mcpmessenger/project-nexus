@@ -100,6 +100,8 @@ psql <your-supabase-connection-string> -f scripts/003_seed_sample_data.sql
 psql <your-supabase-connection-string> -f scripts/004_create_rls_policies.sql
 psql <your-supabase-connection-string> -f scripts/005_create_search_function.sql
 psql <your-supabase-connection-string> -f scripts/006_google_workspace_schema.sql
+psql <your-supabase-connection-string> -f scripts/007_add_mcp_server_logos.sql
+psql <your-supabase-connection-string> -f scripts/008_add_new_mcp_servers.sql
 ```
 
 Or use the Supabase SQL Editor to run them one by one.
