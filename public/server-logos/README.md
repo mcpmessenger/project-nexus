@@ -10,7 +10,7 @@ Place SVG, PNG, or other image files here for each MCP server:
 - `google-maps.svg` - Google Maps Grounding Lite logo  
 - `google-workspace.svg` - Google Workspace MCP Server logo
 - `brave-search.svg` - Brave Search logo
-- `puppeteer.svg` - Puppeteer/Playwright logo
+- `puppeteer.svg` - Puppeteer logo (NOT Playwright - they are different tools)
 - `filesystem.svg` - Filesystem server logo
 - `postgres.svg` - Postgres server logo
 

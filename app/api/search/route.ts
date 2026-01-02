@@ -54,6 +54,7 @@ export async function POST(request: Request) {
       tool_description: tool.description,
       server_name: tool.mcp_servers.name,
       server_id: tool.mcp_servers.id,
+      server_logo_url: tool.mcp_servers.logo_url || null,
       similarity: 0.8, // Default similarity for text search
     }))
 

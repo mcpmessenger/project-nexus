@@ -8,7 +8,7 @@ Current status of server logos in this directory.
 - ✅ **google-maps.png** - Google Maps Grounding Lite logo
 - ✅ **google-workspace.webp** - Google Workspace MCP Server logo (Gmail icon)
 - ✅ **brave-search.webp** - Brave Search logo
-- ✅ **puppeteer.png** - Puppeteer/Playwright logo
+- ⚠️ **puppeteer.png** - Should be Puppeteer logo (currently may be incorrect - verify it's Puppeteer, not Playwright)
 
 ## ⚠️ Missing Logos
 

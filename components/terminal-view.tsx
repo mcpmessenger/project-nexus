@@ -112,149 +112,164 @@ export function TerminalView({ initialCode = "", selectedTool = null }: Terminal
   }
 
   return (
-    <div className="flex h-full flex-col gap-4 border-l p-4">
-      <Card className="flex-1 flex flex-col">
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Terminal className="h-5 w-5" />
-              <CardTitle>Python Sandbox</CardTitle>
-            </div>
-            <div className="flex items-center gap-2">
-              <Tabs value={mode} onValueChange={(v) => setMode(v as "wizard" | "code")} className="w-auto">
-                <TabsList>
-                  <TabsTrigger value="wizard" disabled={!selectedTool}>
-                    <Sparkles className="h-4 w-4 mr-2" />
-                    Wizard
-                  </TabsTrigger>
-                  <TabsTrigger value="code">
-                    <Terminal className="h-4 w-4 mr-2" />
-                    Code
-                  </TabsTrigger>
-                </TabsList>
-              </Tabs>
-              {mode === "code" && (
-                <Button onClick={handleExecute} disabled={isExecuting || !code.trim()} size="sm">
-                  {isExecuting ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Running...
-                    </>
-                  ) : (
-                    <>
-                      <Play className="mr-2 h-4 w-4" />
-                      Execute
-                    </>
-                  )}
-                </Button>
+    <div className="flex h-full flex-col overflow-hidden border-l border-t lg:border-t-0">
+      {/* File/folder style tabs at the top */}
+      <div className="flex-shrink-0 border-b bg-background">
+        <div className="flex items-center justify-between px-2 sm:px-3">
+          <Tabs value={mode} onValueChange={(v) => setMode(v as "wizard" | "code")} className="flex-1">
+            <TabsList className="bg-transparent p-0 h-8 sm:h-9 gap-0">
+              <TabsTrigger 
+                value="wizard" 
+                disabled={!selectedTool}
+                className="text-xs sm:text-sm rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 sm:px-4"
+              >
+                <Sparkles className="h-3 w-3 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Wizard</span>
+              </TabsTrigger>
+              <TabsTrigger 
+                value="code"
+                className="text-xs sm:text-sm rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none px-3 sm:px-4"
+              >
+                <Terminal className="h-3 w-3 sm:h-3.5 sm:w-3.5 sm:mr-1.5" />
+                <span className="hidden sm:inline">Code</span>
+              </TabsTrigger>
+            </TabsList>
+          </Tabs>
+          {mode === "code" && (
+            <Button onClick={handleExecute} disabled={isExecuting || !code.trim()} size="sm" className="h-7 sm:h-8 text-xs sm:text-sm ml-2">
+              {isExecuting ? (
+                <>
+                  <Loader2 className="mr-1 sm:mr-2 h-3 w-3 sm:h-3.5 sm:w-3.5 animate-spin" />
+                  <span className="hidden sm:inline">Running...</span>
+                  <span className="sm:hidden">Run</span>
+                </>
+              ) : (
+                <>
+                  <Play className="mr-1 sm:mr-2 h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                  <span className="hidden sm:inline">Execute</span>
+                  <span className="sm:hidden">Run</span>
+                </>
               )}
-            </div>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      {/* Full-page content area - fills entire space like file browser */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background">
+        {mode === "wizard" ? (
+          <div className="flex-1 overflow-auto p-4">
+            <CodeWizard tool={selectedTool} onCodeGenerated={handleCodeGenerated} />
           </div>
-        </CardHeader>
-        <CardContent className="flex-1 flex flex-col space-y-4 min-h-0 overflow-hidden">
-          {mode === "wizard" ? (
-            <div className="flex-1 overflow-auto">
-              <CodeWizard tool={selectedTool} onCodeGenerated={handleCodeGenerated} />
-            </div>
-          ) : (
-            <div className="flex-1 flex flex-col space-y-4 min-h-0 overflow-hidden">
-              <Textarea
-                placeholder="# Write Python code here...
+        ) : (
+          /* Split layout: Code editor on left, Results/History on right */
+          <div className="flex-1 flex min-h-0 overflow-hidden">
+            {/* Left side: Code editor */}
+            <div className="flex-1 flex flex-col min-w-0 overflow-hidden border-r">
+              <div className="flex-1 min-h-0 p-4">
+                <Textarea
+                  placeholder="# Write Python code here...
 import json
 
 # Example: Call an MCP tool
 tool_input = {'path': '/example/file.txt'}
 print(json.dumps(tool_input, indent=2))"
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                className="flex-1 min-h-[200px] font-mono text-sm"
-              />
-            </div>
-          )}
-
-          {execution && mode === "code" && (
-            <div className="space-y-2 border-t pt-4">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium">Status:</span>
-                <Badge
-                  variant={
-                    execution.status === "completed"
-                      ? "default"
-                      : execution.status === "failed"
-                        ? "destructive"
-                        : "secondary"
-                  }
-                >
-                  {execution.status}
-                </Badge>
-                {execution.execution_time_ms && (
-                  <span className="text-xs text-muted-foreground">{execution.execution_time_ms}ms</span>
-                )}
-              </div>
-
-              <div>
-                <p className="mb-1 text-sm font-medium">Output:</p>
-                <ScrollArea className="h-[200px] rounded-lg border bg-muted/50">
-                  <pre className="p-4 text-xs">
-                    <code>
-                      {execution.output ? JSON.stringify(execution.output, null, 2) : execution.error || "No output"}
-                    </code>
-                  </pre>
-                </ScrollArea>
+                  value={code}
+                  onChange={(e) => setCode(e.target.value)}
+                  className="h-full w-full font-mono text-xs sm:text-sm resize-none break-words whitespace-pre-wrap overflow-wrap-anywhere"
+                  style={{ wordBreak: "break-word", overflowWrap: "anywhere", minHeight: "100%" }}
+                />
               </div>
             </div>
-          )}
-        </CardContent>
-      </Card>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Clock className="h-4 w-4" />
-            <CardTitle className="text-sm">Recent Executions</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <ScrollArea className="h-[150px]">
-            <div className="space-y-2">
-              {executionHistory.length === 0 ? (
-                <p className="text-xs text-muted-foreground">No executions yet</p>
-              ) : (
-                executionHistory.map((exec) => (
-                  <div
-                    key={exec.id}
-                    className="cursor-pointer rounded-lg border p-2 hover:bg-accent"
-                    onClick={() => {
-                      setCode(exec.code)
-                      setExecution(exec)
-                      setMode("code")
-                    }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <Badge
-                        variant={
-                          exec.status === "completed"
-                            ? "default"
-                            : exec.status === "failed"
-                              ? "destructive"
-                              : "secondary"
-                        }
-                        className="text-xs"
-                      >
-                        {exec.status}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(exec.started_at).toLocaleTimeString()}
-                      </span>
-                    </div>
-                    <p className="mt-1 truncate text-xs text-muted-foreground">{exec.code.split("\n")[0]}</p>
+            {/* Right side: Execution results and history */}
+            <div className="w-96 flex-shrink-0 flex flex-col min-h-0 overflow-hidden bg-muted/20">
+              {/* Current execution output */}
+              {execution && (
+                <div className="flex-shrink-0 border-b bg-background p-4 space-y-3">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-xs sm:text-sm font-medium">Status:</span>
+                    <Badge
+                      variant={
+                        execution.status === "completed"
+                          ? "default"
+                          : execution.status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                      className="text-xs"
+                    >
+                      {execution.status}
+                    </Badge>
+                    {execution.execution_time_ms && (
+                      <span className="text-xs text-muted-foreground">{execution.execution_time_ms}ms</span>
+                    )}
                   </div>
-                ))
+
+                  <div>
+                    <p className="mb-2 text-xs sm:text-sm font-medium">Output:</p>
+                    <ScrollArea className="h-[200px] rounded-lg border bg-background">
+                      <pre className="p-3 sm:p-4 text-xs sm:text-sm whitespace-pre-wrap break-words overflow-wrap-anywhere font-mono">
+                        <code>
+                          {execution.output ? JSON.stringify(execution.output, null, 2) : execution.error || "No output"}
+                        </code>
+                      </pre>
+                    </ScrollArea>
+                  </div>
+                </div>
               )}
+
+              {/* Recent executions - takes remaining space */}
+              <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                <div className="flex-shrink-0 border-b px-4 py-2 bg-muted/30">
+                  <div className="flex items-center gap-2">
+                    <Clock className="h-4 w-4" />
+                    <CardTitle className="text-sm font-semibold">Recent Executions</CardTitle>
+                  </div>
+                </div>
+                <div className="flex-1 overflow-y-auto p-4">
+                  <div className="space-y-2">
+                    {executionHistory.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">No executions yet</p>
+                    ) : (
+                      executionHistory.map((exec) => (
+                        <div
+                          key={exec.id}
+                          className="cursor-pointer rounded-lg border p-3 hover:bg-accent bg-background"
+                          onClick={() => {
+                            setCode(exec.code)
+                            setExecution(exec)
+                            setMode("code")
+                          }}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <Badge
+                              variant={
+                                exec.status === "completed"
+                                  ? "default"
+                                  : exec.status === "failed"
+                                    ? "destructive"
+                                    : "secondary"
+                              }
+                              className="text-xs"
+                            >
+                              {exec.status}
+                            </Badge>
+                            <span className="text-xs text-muted-foreground">
+                              {new Date(exec.started_at).toLocaleTimeString()}
+                            </span>
+                          </div>
+                          <p className="text-xs sm:text-sm text-muted-foreground line-clamp-2 font-mono">{exec.code.split("\n")[0]}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
-          </ScrollArea>
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

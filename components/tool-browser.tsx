@@ -68,6 +68,7 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
             mcp_servers: {
               name: result.server_name,
               id: result.server_id,
+              logo_url: result.server_logo_url || null,
             },
           }))
         : []
@@ -86,81 +87,87 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
     : tools.filter((tool) => !selectedTag || servers.find((s) => s.id === tool.server_id)?.tags?.includes(selectedTag))
 
   return (
-    <div className="flex h-full flex-col gap-4 border-r bg-muted/20 p-4">
-      <div className="flex flex-col gap-2">
-        <div className="relative">
-          <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search tools..."
-            value={searchQuery}
-            onChange={(e) => handleSearch(e.target.value)}
-            className="pl-9"
-          />
-        </div>
+    <div className="flex h-full flex-col bg-background overflow-hidden">
+      {/* Search and filters at top */}
+      <div className="flex-shrink-0 border-b bg-muted/30 p-4">
+        <div className="flex flex-col gap-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search tools..."
+              value={searchQuery}
+              onChange={(e) => handleSearch(e.target.value)}
+              className="pl-9 h-10 text-sm"
+            />
+          </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Badge
-            variant={selectedTag === null ? "default" : "outline"}
-            className="cursor-pointer"
-            onClick={() => {
-              setSelectedTag(null)
-              setSearchQuery("")
-            }}
-          >
-            All
-          </Badge>
-          {allTags.map((tag) => (
+          <div className="flex flex-wrap gap-2">
             <Badge
-              key={tag}
-              variant={selectedTag === tag ? "default" : "outline"}
-              className="cursor-pointer"
+              variant={selectedTag === null ? "default" : "outline"}
+              className="cursor-pointer text-xs whitespace-nowrap"
               onClick={() => {
-                setSelectedTag(tag)
+                setSelectedTag(null)
                 setSearchQuery("")
               }}
             >
-              {tag}
+              All
             </Badge>
-          ))}
+            {allTags.map((tag) => (
+              <Badge
+                key={tag}
+                variant={selectedTag === tag ? "default" : "outline"}
+                className="cursor-pointer text-xs whitespace-nowrap"
+                onClick={() => {
+                  setSelectedTag(tag)
+                  setSearchQuery("")
+                }}
+              >
+                {tag}
+              </Badge>
+            ))}
+          </div>
         </div>
       </div>
 
-      <div className="flex-1 space-y-2 overflow-y-auto">
-        {loading ? (
-          <div className="flex h-full items-center justify-center">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          filteredTools.map((tool) => (
-            <Card
-              key={tool.id}
-              className={`cursor-pointer p-3 transition-colors hover:bg-accent ${selectedToolId === tool.id ? "border-primary bg-accent" : ""}`}
-              onClick={() =>
-                onSelectTool({
-                  ...tool,
-                  server: servers.find((s) => s.id === tool.server_id) || ({} as MCPServer),
-                })
-              }
-            >
-              <div className="flex items-start gap-2">
-                <ServerLogo 
-                  server={servers.find((s) => s.id === tool.server_id) || tool.mcp_servers || null} 
-                  size={16}
-                  className="mt-0.5"
-                />
-                <div className="flex-1 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-medium leading-none">{tool.name}</p>
-                    <Badge variant="secondary" className="text-xs">
-                      {tool.mcp_servers.name}
-                    </Badge>
+      {/* Tools list - full page scrollable */}
+      <div className="flex-1 overflow-y-auto p-4">
+        <div className="space-y-3">
+          {loading ? (
+            <div className="flex h-full items-center justify-center min-h-[400px]">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            filteredTools.map((tool) => (
+              <Card
+                key={tool.id}
+                className={`cursor-pointer p-4 transition-colors hover:bg-accent ${selectedToolId === tool.id ? "border-primary bg-accent" : ""}`}
+                onClick={() =>
+                  onSelectTool({
+                    ...tool,
+                    server: servers.find((s) => s.id === tool.server_id) || ({} as MCPServer),
+                  })
+                }
+              >
+                <div className="flex items-start gap-3">
+                  <ServerLogo 
+                    server={servers.find((s) => s.id === tool.server_id) || tool.mcp_servers || null} 
+                    size={20}
+                    className="mt-0.5 flex-shrink-0"
+                  />
+                  <div className="flex-1 space-y-2 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <p className="text-sm sm:text-base font-medium">{tool.name}</p>
+                      <Badge variant="secondary" className="text-xs flex-shrink-0">
+                        {tool.mcp_servers.name}
+                      </Badge>
+                    </div>
+                    {tool.description && <p className="text-sm text-muted-foreground">{tool.description}</p>}
                   </div>
-                  {tool.description && <p className="text-xs text-muted-foreground line-clamp-2">{tool.description}</p>}
                 </div>
-              </div>
-            </Card>
-          ))
-        )}
+              </Card>
+            ))
+          )}
+        </div>
       </div>
     </div>
   )

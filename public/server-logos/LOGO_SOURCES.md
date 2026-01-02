@@ -34,9 +34,10 @@ This document provides links and instructions for obtaining logos for each MCP s
 
 ## Puppeteer
 
-**Source**: Puppeteer logo
+**Source**: Puppeteer logo (NOT Playwright - they are different tools)
 - **Official Repository**: https://github.com/puppeteer/puppeteer
 - **Logo**: Puppeteer logo (puppet/string icon)
+- **Important**: Puppeteer and Playwright are separate projects - use the Puppeteer logo only
 - **Alternative**: Use a simple automation/robot icon
 
 ## Filesystem
