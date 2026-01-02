@@ -86,6 +86,7 @@ export const metadata: Metadata = {
         url: "/nexus-logo.png",
         sizes: "any",
         type: "image/png",
+        rel: "icon",
       },
     ],
     apple: [

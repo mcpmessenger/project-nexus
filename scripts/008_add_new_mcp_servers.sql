@@ -3,17 +3,17 @@
 
 -- Insert LangChain MCP Server
 INSERT INTO mcp_servers (name, description, repository_url, author, version, install_command, tags, logo_url) 
-SELECT 'langchain-mcp', 'LangChain Agent MCP Server - Multi-step reasoning with ReAct pattern', 'https://github.com/mcpmessenger/langchain-mcp', 'mcpmessenger', '1.0.0', NULL, ARRAY['langchain', 'agent', 'ai', 'reasoning'], '/server-logos/langchain-mcp.svg'
+SELECT 'langchain-mcp', 'LangChain Agent MCP Server - Multi-step reasoning with ReAct pattern', 'https://github.com/mcpmessenger/langchain-mcp', 'mcpmessenger', '1.0.0', NULL, ARRAY['langchain', 'agent', 'ai', 'reasoning'], '/server-logos/langchain-mcp.png'
 WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE name = 'langchain-mcp');
 
 -- Insert Google Maps Grounding Lite MCP Server
 INSERT INTO mcp_servers (name, description, repository_url, author, version, install_command, tags, logo_url) 
-SELECT 'maps-grounding-lite', 'Google Maps Grounding Lite - Search places, lookup weather, compute routes with geospatial data', 'https://developers.google.com/maps/ai/grounding-lite', 'Google', '1.0.0', NULL, ARRAY['maps', 'geospatial', 'weather', 'places', 'routes', 'google'], '/server-logos/google-maps.svg'
+SELECT 'maps-grounding-lite', 'Google Maps Grounding Lite - Search places, lookup weather, compute routes with geospatial data', 'https://developers.google.com/maps/ai/grounding-lite', 'Google', '1.0.0', NULL, ARRAY['maps', 'geospatial', 'weather', 'places', 'routes', 'google'], '/server-logos/google-maps.png'
 WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE name = 'maps-grounding-lite');
 
 -- Insert Google Workspace MCP Server (explicitly)
 INSERT INTO mcp_servers (name, description, repository_url, author, version, install_command, tags, logo_url) 
-SELECT 'google-workspace-mcp', 'Google Workspace MCP Server - Gmail, Calendar, Drive, and other Google Workspace services', 'https://github.com/taylorwilsdon/google-workspace-mcp', 'taylorwilsdon', '1.0.0', 'npx -y @taylorwilsdon/google-workspace-mcp', ARRAY['google', 'gmail', 'calendar', 'drive', 'workspace'], '/server-logos/google-workspace.svg'
+SELECT 'google-workspace-mcp', 'Google Workspace MCP Server - Gmail, Calendar, Drive, and other Google Workspace services', 'https://github.com/taylorwilsdon/google-workspace-mcp', 'taylorwilsdon', '1.0.0', 'npx -y @taylorwilsdon/google-workspace-mcp', ARRAY['google', 'gmail', 'calendar', 'drive', 'workspace'], '/server-logos/google-workspace.webp'
 WHERE NOT EXISTS (SELECT 1 FROM mcp_servers WHERE name = 'google-workspace-mcp');
 
 -- Insert tools for LangChain MCP Server
@@ -95,7 +95,7 @@ SELECT
 FROM mcp_servers WHERE name = 'google-workspace-mcp';
 
 -- Update existing servers with logo URLs (optional - if they don't have conflicts)
-UPDATE mcp_servers SET logo_url = '/server-logos/brave-search.svg' WHERE name = 'brave-search' AND logo_url IS NULL;
-UPDATE mcp_servers SET logo_url = '/server-logos/puppeteer.svg' WHERE name = 'puppeteer' AND logo_url IS NULL;
+UPDATE mcp_servers SET logo_url = '/server-logos/brave-search.webp' WHERE name = 'brave-search' AND logo_url IS NULL;
+UPDATE mcp_servers SET logo_url = '/server-logos/puppeteer.png' WHERE name = 'puppeteer' AND logo_url IS NULL;
 UPDATE mcp_servers SET logo_url = '/server-logos/filesystem.svg' WHERE name = 'filesystem' AND logo_url IS NULL;
 UPDATE mcp_servers SET logo_url = '/server-logos/postgres.svg' WHERE name = 'postgres' AND logo_url IS NULL;
