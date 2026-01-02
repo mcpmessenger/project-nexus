@@ -14,6 +14,7 @@
 Project Nexus is a **next-generation platform** that brings together:
 - 🔍 **Semantic Search** - Find MCP tools using AI-powered vector search
 - 🧪 **Code Sandbox** - Execute Python code with integrated MCP tool access
+- ✨ **Code Wizard** - Form-based interface to generate Python code without writing it manually
 - 🔗 **Google Workspace Integration** - Connect Gmail, Calendar, and Drive seamlessly
 - 🔐 **OAuth 2.1** - Secure multi-account authentication with incremental scopes
 - 🎯 **MCP Server Management** - Provision, monitor, and manage MCP servers dynamically
@@ -21,6 +22,7 @@ Project Nexus is a **next-generation platform** that brings together:
 ### 🎨 Features
 
 - **Smart Tool Discovery** - Vector embeddings for semantic tool search
+- **Code Wizard** - Visual form builder that generates Python code from tool schemas (no coding required!)
 - **Python SDK** - Write code that interacts with Google Workspace via MCP
 - **Multi-Account Support** - Link work and personal Google accounts
 - **Incremental Permissions** - Request only the scopes you need, when you need them
@@ -199,6 +201,19 @@ POST /api/search
 
 ### 🧪 Executing Code
 
+#### Using the Code Wizard (Recommended for Beginners)
+
+1. **Select a tool** from the left panel
+2. **Switch to "Wizard" mode** in the Python Sandbox
+3. **Fill out the form** with the tool's parameters
+4. **Click "Generate & Run Code"** - Python code is generated automatically!
+5. **Switch to "Code" mode** to view or edit the generated code
+6. **Execute** your code
+
+The wizard makes it easy to use MCP tools without writing Python code manually.
+
+#### Writing Code Manually
+
 Write Python code in the terminal view and execute:
 
 ```python
@@ -225,6 +240,8 @@ project-nexus/
 │   └── page.tsx           # Main page
 ├── components/            # React components
 │   ├── ui/               # shadcn/ui components
+│   ├── code-wizard.tsx   # Code wizard form builder
+│   ├── terminal-view.tsx # Python sandbox UI
 │   ├── google-oauth-button.tsx
 │   ├── account-switcher.tsx
 │   └── ...

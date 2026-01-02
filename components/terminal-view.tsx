@@ -6,16 +6,20 @@ import { Button } from "@/components/ui/button"
 import { Textarea } from "@/components/ui/textarea"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Play, Loader2, Terminal, Clock } from "lucide-react"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Play, Loader2, Terminal, Clock, Sparkles } from "lucide-react"
 import { createClient } from "@/lib/supabase/client"
-import type { SandboxExecution } from "@/lib/types"
+import type { SandboxExecution, MCPTool, MCPServer } from "@/lib/types"
+import { CodeWizard } from "@/components/code-wizard"
 
 interface TerminalViewProps {
   initialCode?: string
+  selectedTool?: (MCPTool & { server: MCPServer }) | null
 }
 
-export function TerminalView({ initialCode = "" }: TerminalViewProps) {
+export function TerminalView({ initialCode = "", selectedTool = null }: TerminalViewProps) {
   const [code, setCode] = useState(initialCode)
+  const [mode, setMode] = useState<"wizard" | "code">("wizard")
   const [execution, setExecution] = useState<SandboxExecution | null>(null)
   const [isExecuting, setIsExecuting] = useState(false)
   const [executionHistory, setExecutionHistory] = useState<SandboxExecution[]>([])
@@ -88,48 +92,88 @@ export function TerminalView({ initialCode = "" }: TerminalViewProps) {
   useEffect(() => {
     if (initialCode && initialCode !== code && !isExecuting) {
       setCode(initialCode)
+      // Switch to code mode when code is provided externally
+      if (initialCode.trim()) {
+        setMode("code")
+      }
     }
   }, [initialCode, code, isExecuting])
 
+  // Auto-switch to wizard mode if a tool is selected and no code yet
+  useEffect(() => {
+    if (selectedTool && !code.trim() && mode === "code") {
+      setMode("wizard")
+    }
+  }, [selectedTool, code, mode])
+
+  function handleCodeGenerated(generatedCode: string) {
+    setCode(generatedCode)
+    setMode("code")
+  }
+
   return (
     <div className="flex h-full flex-col gap-4 border-l p-4">
-      <Card className="flex-1">
+      <Card className="flex-1 flex flex-col">
         <CardHeader>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Terminal className="h-5 w-5" />
               <CardTitle>Python Sandbox</CardTitle>
             </div>
-            <Button onClick={handleExecute} disabled={isExecuting || !code.trim()} size="sm">
-              {isExecuting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Running...
-                </>
-              ) : (
-                <>
-                  <Play className="mr-2 h-4 w-4" />
-                  Execute
-                </>
+            <div className="flex items-center gap-2">
+              <Tabs value={mode} onValueChange={(v) => setMode(v as "wizard" | "code")} className="w-auto">
+                <TabsList>
+                  <TabsTrigger value="wizard" disabled={!selectedTool}>
+                    <Sparkles className="h-4 w-4 mr-2" />
+                    Wizard
+                  </TabsTrigger>
+                  <TabsTrigger value="code">
+                    <Terminal className="h-4 w-4 mr-2" />
+                    Code
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+              {mode === "code" && (
+                <Button onClick={handleExecute} disabled={isExecuting || !code.trim()} size="sm">
+                  {isExecuting ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Running...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="mr-2 h-4 w-4" />
+                      Execute
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
+            </div>
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <Textarea
-            placeholder="# Write Python code here...
+        <CardContent className="flex-1 flex flex-col space-y-4 min-h-0 overflow-hidden">
+          {mode === "wizard" ? (
+            <div className="flex-1 overflow-auto">
+              <CodeWizard tool={selectedTool} onCodeGenerated={handleCodeGenerated} />
+            </div>
+          ) : (
+            <div className="flex-1 flex flex-col space-y-4 min-h-0 overflow-hidden">
+              <Textarea
+                placeholder="# Write Python code here...
 import json
 
 # Example: Call an MCP tool
 tool_input = {'path': '/example/file.txt'}
 print(json.dumps(tool_input, indent=2))"
-            value={code}
-            onChange={(e) => setCode(e.target.value)}
-            className="min-h-[200px] font-mono text-sm"
-          />
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                className="flex-1 min-h-[200px] font-mono text-sm"
+              />
+            </div>
+          )}
 
-          {execution && (
-            <div className="space-y-2">
+          {execution && mode === "code" && (
+            <div className="space-y-2 border-t pt-4">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-medium">Status:</span>
                 <Badge
@@ -183,6 +227,7 @@ print(json.dumps(tool_input, indent=2))"
                     onClick={() => {
                       setCode(exec.code)
                       setExecution(exec)
+                      setMode("code")
                     }}
                   >
                     <div className="flex items-center justify-between">

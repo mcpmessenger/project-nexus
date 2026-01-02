@@ -51,7 +51,7 @@ export default function Home() {
           </div>
         )}
 
-        <TerminalView initialCode={codeToExecute} />
+        <TerminalView initialCode={codeToExecute} selectedTool={selectedTool} />
       </div>
     </div>
   )

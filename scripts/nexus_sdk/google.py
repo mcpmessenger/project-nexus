@@ -1,6 +1,9 @@
 """
 Google Workspace SDK for Project Nexus
 Provides a simple Python API for interacting with Google Workspace services via MCP
+
+This SDK wraps MCP calls and handles data processing locally in the sandbox,
+following the "Nexus way" of keeping heavy data processing away from the LLM context.
 """
 
 import json
@@ -31,17 +34,183 @@ class MCPCallError(NexusAPIError):
     pass
 
 
-class GoogleWorkspace:
+class Gmail:
+    """
+    Gmail service client
+    
+    Provides methods to interact with Gmail through the MCP proxy.
+    Processing happens locally in the sandbox to save tokens.
+    """
+    
+    def __init__(self, parent):
+        self._parent = parent
+    
+    def search(self, query: str, limit: int = 10):
+        """
+        Searches Gmail and returns structured results.
+        
+        The MCP call happens here, but results are processed LOCALLY
+        in the sandbox before being returned. This saves tokens by
+        filtering/summarizing data before the LLM sees it.
+        
+        Args:
+            query: Gmail search query string
+            limit: Maximum number of results to return (processed locally)
+            
+        Returns:
+            List of message objects with id, snippet, and from fields
+        """
+        # The MCP call happens here
+        raw_results = self._parent._call_mcp("gmail_search", {"query": query})
+        
+        # Logic is handled LOCALLY in the sandbox
+        # We can pre-process/summarize here before the LLM sees it
+        if not raw_results:
+            return []
+        
+        # Ensure we have a list
+        if not isinstance(raw_results, list):
+            raw_results = [raw_results]
+        
+        # Process and limit results locally (saves tokens)
+        processed = []
+        for m in raw_results[:limit]:
+            # Extract relevant fields - processing happens in sandbox, not LLM context
+            msg = {
+                "id": m.get("id", ""),
+                "snippet": m.get("snippet", ""),
+                "from": m.get("from", "")
+            }
+            processed.append(msg)
+        
+        return processed
+    
+    def list_messages(self, query=None, max_results=50):
+        """
+        List Gmail messages
+        
+        Args:
+            query: Gmail search query (optional)
+            max_results: Maximum number of results
+            
+        Returns:
+            List of message objects
+        """
+        params = {"max_results": max_results}
+        if query:
+            params["query"] = query
+        return self._parent._call_mcp("gmail_list_messages", params)
+    
+    def get_message(self, message_id):
+        """
+        Get message by ID
+        
+        Args:
+            message_id: Gmail message ID
+            
+        Returns:
+            Message object
+        """
+        return self._parent._call_mcp("gmail_get_message", {
+            "message_id": message_id
+        })
+
+
+class Calendar:
+    """
+    Google Calendar service client
+    
+    Provides methods to interact with Google Calendar through the MCP proxy.
+    """
+    
+    def __init__(self, parent):
+        self._parent = parent
+    
+    def list_events(self, calendar_id="primary", time_min=None):
+        """
+        List calendar events
+        
+        Args:
+            calendar_id: Calendar ID (defaults to "primary")
+            time_min: Minimum time for events (ISO format string)
+            
+        Returns:
+            List of event objects
+        """
+        params = {
+            "calendarId": calendar_id
+        }
+        if time_min:
+            params["timeMin"] = time_min
+        
+        return self._parent._call_mcp("calendar_list_events", params)
+    
+    def get_event(self, event_id, calendar_id="primary"):
+        """
+        Get event by ID
+        
+        Args:
+            event_id: Calendar event ID
+            calendar_id: Calendar ID (defaults to "primary")
+            
+        Returns:
+            Event object
+        """
+        return self._parent._call_mcp("calendar_get_event", {
+            "event_id": event_id,
+            "calendarId": calendar_id
+        })
+    
+    def create_event(self, summary, start_time, end_time, calendar_id="primary", description=None, location=None):
+        """
+        Create a calendar event
+        
+        Args:
+            summary: Event title
+            start_time: Start time (ISO format)
+            end_time: End time (ISO format)
+            calendar_id: Calendar ID (defaults to "primary")
+            description: Optional event description
+            location: Optional event location
+            
+        Returns:
+            Created event object
+        """
+        params = {
+            "summary": summary,
+            "start_time": start_time,
+            "end_time": end_time,
+            "calendarId": calendar_id
+        }
+        if description:
+            params["description"] = description
+        if location:
+            params["location"] = location
+        return self._parent._call_mcp("calendar_create_event", params)
+
+
+class GoogleSDK:
     """
     Google Workspace SDK client
     
-    Provides methods to interact with Google Drive, Calendar, and Gmail
-    through the Project Nexus MCP proxy.
+    Provides a clean Python API for interacting with Google Workspace services
+    through the Project Nexus MCP proxy. This wrapper translates simple Python
+    calls into the mcp.call() format required to communicate with the 
+    google-workspace-mcp server (specifically the version by taylorwilsdon).
+    
+    Usage:
+        from nexus_sdk import google
+        
+        # Search Gmail (processing happens in sandbox)
+        emails = google.gmail.search("Project Nexus", limit=10)
+        
+        # List calendar events
+        events = google.calendar.list_events(calendar_id="primary", time_min="2024-01-01T00:00:00Z")
     """
     
     def __init__(self, base_url=None, server_instance_id=None):
         """
-        Initialize Google Workspace client
+        Initialize Google Workspace SDK client
         
         Args:
             base_url: Base URL for Nexus API (defaults to environment variable or localhost)
@@ -51,14 +220,20 @@ class GoogleWorkspace:
         self.server_instance_id = server_instance_id or os.environ.get('NEXUS_SERVER_INSTANCE_ID')
         
         if not self.server_instance_id:
-            raise ValueError("server_instance_id must be provided or set in NEXUS_SERVER_INSTANCE_ID environment variable")
+            raise ValueError(
+                "server_instance_id must be provided or set in NEXUS_SERVER_INSTANCE_ID environment variable"
+            )
+        
+        # Initialize service clients
+        self.gmail = Gmail(self)
+        self.calendar = Calendar(self)
     
     def _call_mcp(self, method, params=None):
         """
         Make an MCP call through the Nexus proxy
         
         Args:
-            method: MCP method name
+            method: MCP method name (e.g., "gmail_search", "calendar_list_events")
             params: Method parameters
             
         Returns:
@@ -91,243 +266,7 @@ class GoogleWorkspace:
             if isinstance(e, MCPCallError):
                 raise
             raise MCPCallError(f"Failed to call MCP: {str(e)}")
-    
-    # Drive methods
-    class Drive:
-        def __init__(self, parent):
-            self._parent = parent
-        
-        def search(self, query, max_results=10):
-            """
-            Search for files in Google Drive
-            
-            Args:
-                query: Search query string
-                max_results: Maximum number of results to return
-                
-            Returns:
-                List of file objects
-            """
-            return self._parent._call_mcp("google_drive_search", {
-                "query": query,
-                "max_results": max_results
-            })
-        
-        def get_file(self, file_id):
-            """
-            Get file metadata by ID
-            
-            Args:
-                file_id: Google Drive file ID
-                
-            Returns:
-                File metadata object
-            """
-            return self._parent._call_mcp("google_drive_get_file", {
-                "file_id": file_id
-            })
-        
-        def list_files(self, folder_id=None, max_results=50):
-            """
-            List files in Google Drive
-            
-            Args:
-                folder_id: Optional folder ID to list files from
-                max_results: Maximum number of results
-                
-            Returns:
-                List of file objects
-            """
-            params = {"max_results": max_results}
-            if folder_id:
-                params["folder_id"] = folder_id
-            return self._parent._call_mcp("google_drive_list_files", params)
-        
-        def create_file(self, name, content=None, mime_type="text/plain", folder_id=None):
-            """
-            Create a new file in Google Drive
-            
-            Args:
-                name: File name
-                content: File content (optional)
-                mime_type: MIME type of the file
-                folder_id: Optional folder ID to create file in
-                
-            Returns:
-                Created file object
-            """
-            params = {
-                "name": name,
-                "mime_type": mime_type
-            }
-            if content:
-                params["content"] = content
-            if folder_id:
-                params["folder_id"] = folder_id
-            return self._parent._call_mcp("google_drive_create_file", params)
-    
-    # Calendar methods
-    class Calendar:
-        def __init__(self, parent):
-            self._parent = parent
-        
-        def list_events(self, start_date=None, end_date=None, max_results=50):
-            """
-            List calendar events
-            
-            Args:
-                start_date: Start date (ISO format or YYYY-MM-DD)
-                end_date: End date (ISO format or YYYY-MM-DD)
-                max_results: Maximum number of results
-                
-            Returns:
-                List of event objects
-            """
-            params = {"max_results": max_results}
-            if start_date:
-                params["start_date"] = start_date
-            if end_date:
-                params["end_date"] = end_date
-            return self._parent._call_mcp("google_calendar_list_events", params)
-        
-        def get_event(self, event_id):
-            """
-            Get event by ID
-            
-            Args:
-                event_id: Calendar event ID
-                
-            Returns:
-                Event object
-            """
-            return self._parent._call_mcp("google_calendar_get_event", {
-                "event_id": event_id
-            })
-        
-        def create_event(self, summary, start_time, end_time, description=None, location=None):
-            """
-            Create a calendar event
-            
-            Args:
-                summary: Event title
-                start_time: Start time (ISO format)
-                end_time: End time (ISO format)
-                description: Optional event description
-                location: Optional event location
-                
-            Returns:
-                Created event object
-            """
-            params = {
-                "summary": summary,
-                "start_time": start_time,
-                "end_time": end_time
-            }
-            if description:
-                params["description"] = description
-            if location:
-                params["location"] = location
-            return self._parent._call_mcp("google_calendar_create_event", params)
-    
-    # Gmail methods
-    class Gmail:
-        def __init__(self, parent):
-            self._parent = parent
-        
-        def list_messages(self, query=None, max_results=50):
-            """
-            List Gmail messages
-            
-            Args:
-                query: Gmail search query (optional)
-                max_results: Maximum number of results
-                
-            Returns:
-                List of message objects
-            """
-            params = {"max_results": max_results}
-            if query:
-                params["query"] = query
-            return self._parent._call_mcp("google_gmail_list_messages", params)
-        
-        def get_message(self, message_id):
-            """
-            Get message by ID
-            
-            Args:
-                message_id: Gmail message ID
-                
-            Returns:
-                Message object
-            """
-            return self._parent._call_mcp("google_gmail_get_message", {
-                "message_id": message_id
-            })
-        
-        def send(self, to, subject, body, cc=None, bcc=None):
-            """
-            Send an email via Gmail
-            
-            Args:
-                to: Recipient email address(es) - string or list
-                subject: Email subject
-                body: Email body (plain text)
-                cc: CC recipients (optional)
-                bcc: BCC recipients (optional)
-                
-            Returns:
-                Sent message object
-            """
-            params = {
-                "to": to if isinstance(to, list) else [to],
-                "subject": subject,
-                "body": body
-            }
-            if cc:
-                params["cc"] = cc if isinstance(cc, list) else [cc]
-            if bcc:
-                params["bcc"] = bcc if isinstance(bcc, list) else [bcc]
-            return self._parent._call_mcp("google_gmail_send", params)
-    
-    def __init__(self, base_url=None, server_instance_id=None):
-        """Initialize Google Workspace client"""
-        self.base_url = base_url or os.environ.get('NEXUS_API_URL', 'http://localhost:3000')
-        self.server_instance_id = server_instance_id or os.environ.get('NEXUS_SERVER_INSTANCE_ID')
-        
-        if not self.server_instance_id:
-            raise ValueError("server_instance_id must be provided or set in NEXUS_SERVER_INSTANCE_ID environment variable")
-        
-        # Initialize service clients
-        self.drive = self.Drive(self)
-        self.calendar = self.Calendar(self)
-        self.gmail = self.Gmail(self)
-    
-    def _call_mcp(self, method, params=None):
-        """Make an MCP call through the Nexus proxy"""
-        url = f"{self.base_url}/api/mcp/call"
-        payload = {
-            "server_instance_id": self.server_instance_id,
-            "method": method,
-            "params": params or {}
-        }
-        
-        try:
-            if HAS_REQUESTS:
-                response = requests.post(url, json=payload, timeout=30)
-                response.raise_for_status()
-                data = response.json()
-            else:
-                # Fallback to urllib
-                req_data = json.dumps(payload).encode('utf-8')
-                req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'})
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    data = json.loads(response.read().decode('utf-8'))
-            
-            if 'error' in data:
-                raise MCPCallError(f"MCP call failed: {data['error']}")
-            
-            return data.get('result')
-        except Exception as e:
-            if isinstance(e, MCPCallError):
-                raise
-            raise MCPCallError(f"Failed to call MCP: {str(e)}")
+
+
+# Alias for backward compatibility
+GoogleWorkspace = GoogleSDK
