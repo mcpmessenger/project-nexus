@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { Search, Loader2 } from "lucide-react"
+import { Search, Loader2, AlertCircle } from "lucide-react"
 import type { MCPServer, MCPTool } from "@/lib/types"
 import { ServerLogo } from "@/components/server-logo"
 
@@ -17,6 +17,7 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
   const [servers, setServers] = useState<MCPServer[]>([])
   const [tools, setTools] = useState<(MCPTool & { mcp_servers: MCPServer | { name: string; id: string; logo_url?: string | null } })[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
 
@@ -26,19 +27,39 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
 
   async function fetchData() {
     setLoading(true)
+    setError(null)
     try {
       const serverUrl = selectedTag ? `/api/servers?tag=${selectedTag}` : "/api/servers"
       const [serversRes, toolsRes] = await Promise.all([fetch(serverUrl), fetch("/api/tools")])
+
+      if (!serversRes.ok) {
+        const errorText = await serversRes.text()
+        const errorMsg = `Servers API failed: ${serversRes.status} ${errorText}`
+        console.error("[ToolBrowser] Servers API error:", serversRes.status, errorText)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
+
+      if (!toolsRes.ok) {
+        const errorText = await toolsRes.text()
+        const errorMsg = `Tools API failed: ${toolsRes.status} ${errorText}`
+        console.error("[ToolBrowser] Tools API error:", toolsRes.status, errorText)
+        setError(errorMsg)
+        throw new Error(errorMsg)
+      }
 
       const serversData = await serversRes.json()
       const toolsData = await toolsRes.json()
 
       setServers(Array.isArray(serversData) ? serversData : [])
       setTools(Array.isArray(toolsData) ? toolsData : [])
-    } catch (error) {
-      console.error("[v0] Failed to fetch data:", error)
+    } catch (error: any) {
+      console.error("[ToolBrowser] Failed to fetch data:", error)
       setServers([])
       setTools([])
+      if (!error) {
+        setError("Failed to fetch data. Check browser console for details.")
+      }
     } finally {
       setLoading(false)
     }
@@ -135,6 +156,25 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
           {loading ? (
             <div className="flex h-full items-center justify-center min-h-[400px]">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : error ? (
+            <div className="flex h-full items-center justify-center min-h-[400px]">
+              <div className="text-center max-w-md p-6 border border-destructive/50 rounded-lg bg-destructive/10">
+                <p className="text-sm font-semibold text-destructive mb-2">Error Loading Tools</p>
+                <p className="text-xs text-muted-foreground mb-4">{error}</p>
+                <p className="text-xs text-muted-foreground">
+                  Check browser console (F12) and verify environment variables are set in Vercel.
+                </p>
+              </div>
+            </div>
+          ) : filteredTools.length === 0 ? (
+            <div className="flex h-full items-center justify-center min-h-[400px]">
+              <div className="text-center">
+                <p className="text-sm font-medium text-muted-foreground mb-2">No tools found</p>
+                <p className="text-xs text-muted-foreground">
+                  {searchQuery ? "Try a different search term" : "No tools available"}
+                </p>
+              </div>
             </div>
           ) : (
             filteredTools.map((tool) => (

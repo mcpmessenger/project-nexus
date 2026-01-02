@@ -57,3 +57,87 @@ After restarting, check:
 3. Should NOT see "Invalid API key" errors
 4. Visit http://localhost:3000/api/servers
 5. Should see JSON data (not an error)
+
+---
+
+## 🚀 Setting Up Environment Variables in Vercel
+
+If you're deploying to Vercel, you need to set environment variables in the Vercel dashboard.
+
+### Step 1: Go to Vercel Project Settings
+
+1. Go to https://vercel.com/dashboard
+2. Select your **Project Nexus** project
+3. Go to **Settings** → **Environment Variables**
+
+### Step 2: Add Required Variables
+
+**Minimum required for the app to work:**
+
+1. **`NEXT_PUBLIC_SUPABASE_URL`**
+   - Value: Your Supabase project URL (from Supabase Dashboard → Settings → API)
+   - Example: `https://xxxxxxxxxxxxx.supabase.co`
+   - Environments: ✅ Production, ✅ Preview, ✅ Development
+
+2. **`NEXT_PUBLIC_SUPABASE_ANON_KEY`**
+   - Value: Your Supabase anon/public key (from Supabase Dashboard → Settings → API)
+   - Example: `eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...`
+   - Environments: ✅ Production, ✅ Preview, ✅ Development
+
+### Step 3: Add Optional Variables (for Google OAuth)
+
+If you want Google Workspace features to work:
+
+3. **`GOOGLE_CLIENT_ID`**
+   - Value: Your Google OAuth Client ID
+   - Format: `xxxxx.apps.googleusercontent.com`
+   - Environments: ✅ Production, ✅ Preview, ✅ Development
+
+4. **`GOOGLE_CLIENT_SECRET`**
+   - Value: Your Google OAuth Client Secret
+   - Format: `GOCSPX-xxxxx`
+   - Environments: ✅ Production, ✅ Preview, ✅ Development
+
+5. **`ENCRYPTION_KEY`**
+   - Value: A 64-character hexadecimal string
+   - Generate with: `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`
+   - Environments: ✅ Production, ✅ Preview, ✅ Development
+
+6. **`NEXT_PUBLIC_APP_URL`** (Optional)
+   - Value: Your Vercel deployment URL
+   - Example: `https://your-project.vercel.app`
+   - Defaults to: `http://localhost:3000` if not set
+   - Environments: ✅ Production, ✅ Preview, ✅ Development
+
+### Step 4: Redeploy
+
+After adding environment variables:
+
+1. **Go to Deployments** tab in Vercel
+2. Click the **⋯** menu on the latest deployment
+3. Click **Redeploy**
+4. Wait for the deployment to complete
+
+### Quick Checklist for Vercel
+
+- [ ] `NEXT_PUBLIC_SUPABASE_URL` is set
+- [ ] `NEXT_PUBLIC_SUPABASE_ANON_KEY` is set
+- [ ] All variables are enabled for Production, Preview, and Development
+- [ ] Deployment has been redeployed after adding variables
+
+### Troubleshooting Vercel Deployments
+
+**Error: "Internal Server Error"**
+- ✅ Check that `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are set
+- ✅ Verify the values are correct (no extra spaces)
+- ✅ Make sure you redeployed after adding variables
+
+**Error: "Invalid API key"**
+- ✅ Double-check the Supabase anon key is correct
+- ✅ Ensure the key is copied completely (they're very long)
+- ✅ Check that the Supabase project is active
+
+**Google OAuth not working**
+- ✅ Verify `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are set
+- ✅ Make sure `ENCRYPTION_KEY` is set (64-character hex string)
+- ✅ Update Google OAuth redirect URI to: `https://your-domain.vercel.app/api/oauth/google/callback`
