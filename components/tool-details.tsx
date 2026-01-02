@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Copy, ExternalLink, Play } from "lucide-react"
+import { ServerLogo } from "@/components/server-logo"
 
 interface ToolDetailsProps {
   tool: MCPTool & { server: MCPServer }
@@ -53,8 +54,11 @@ print(json.dumps(input_data, indent=2))
             </Button>
           </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Badge>{tool.server.name}</Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge className="flex items-center gap-1.5">
+              <ServerLogo server={tool.server} size={14} />
+              {tool.server.name}
+            </Badge>
             {tool.server.tags?.map((tag) => (
               <Badge key={tag} variant="outline">
                 {tag}

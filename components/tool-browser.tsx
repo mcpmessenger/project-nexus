@@ -4,8 +4,9 @@ import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card } from "@/components/ui/card"
-import { Search, Server, Loader2 } from "lucide-react"
+import { Search, Loader2 } from "lucide-react"
 import type { MCPServer, MCPTool } from "@/lib/types"
+import { ServerLogo } from "@/components/server-logo"
 
 interface ToolBrowserProps {
   onSelectTool: (tool: MCPTool & { server: MCPServer }) => void
@@ -14,7 +15,7 @@ interface ToolBrowserProps {
 
 export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) {
   const [servers, setServers] = useState<MCPServer[]>([])
-  const [tools, setTools] = useState<(MCPTool & { mcp_servers: MCPServer })[]>([])
+  const [tools, setTools] = useState<(MCPTool & { mcp_servers: MCPServer | { name: string; id: string; logo_url?: string | null } })[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedTag, setSelectedTag] = useState<string | null>(null)
@@ -142,7 +143,11 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
               }
             >
               <div className="flex items-start gap-2">
-                <Server className="mt-0.5 h-4 w-4 text-muted-foreground" />
+                <ServerLogo 
+                  server={servers.find((s) => s.id === tool.server_id) || tool.mcp_servers || null} 
+                  size={16}
+                  className="mt-0.5"
+                />
                 <div className="flex-1 space-y-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium leading-none">{tool.name}</p>

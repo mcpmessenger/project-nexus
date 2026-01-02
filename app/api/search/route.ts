@@ -36,7 +36,8 @@ export async function POST(request: Request) {
         server_id,
         mcp_servers!inner (
           id,
-          name
+          name,
+          logo_url
         )
       `)
       .or(`name.ilike.%${query}%,description.ilike.%${query}%`)

@@ -14,7 +14,8 @@ export async function GET(request: Request) {
         mcp_servers (
           name,
           author,
-          tags
+          tags,
+          logo_url
         )
       `)
       .order("name")

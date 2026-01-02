@@ -12,6 +12,7 @@ export interface MCPServer {
   tags: string[] | null
   downloads: number
   rating: number
+  logo_url: string | null
 }
 
 export interface MCPTool {
