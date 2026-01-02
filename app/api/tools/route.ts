@@ -29,9 +29,10 @@ export async function GET(request: Request) {
     const serverIds = [...new Set(tools.map((tool: any) => tool.server_id))]
 
     // Query servers separately to avoid nested select schema cache issue
+    // Temporarily exclude logo_url until PostgREST schema cache refreshes
     const { data: servers, error: serversError } = await supabase
       .from("mcp_servers")
-      .select("id, name, author, tags, logo_url")
+      .select("id, name, author, tags")
       .in("id", serverIds)
 
     if (serversError) {
@@ -42,10 +43,14 @@ export async function GET(request: Request) {
     const serversMap = new Map(servers?.map((s: any) => [s.id, s]) || [])
 
     // Combine tools with server data
-    const toolsWithServers = tools.map((tool: any) => ({
-      ...tool,
-      mcp_servers: serversMap.get(tool.server_id) || null,
-    }))
+    // Add logo_url as null for now until PostgREST schema cache refreshes
+    const toolsWithServers = tools.map((tool: any) => {
+      const server = serversMap.get(tool.server_id)
+      return {
+        ...tool,
+        mcp_servers: server ? { ...server, logo_url: null } : null,
+      }
+    })
 
     return NextResponse.json(toolsWithServers)
   } catch (error: any) {
