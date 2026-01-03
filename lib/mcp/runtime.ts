@@ -130,11 +130,15 @@ export class MCPServerRuntime {
    * If transport is missing but database says "running", attempts to re-provision
    */
   async getTransportWithRecovery(instanceId: string, userId: string, serverId: string, accountId: string | null): Promise<MCPTransport | null> {
+    console.log(`[MCP Runtime] getTransportWithRecovery called for instance ${instanceId}, userId=${userId}, serverId=${serverId}, accountId=${accountId}`)
+    
     // First, check if transport exists in memory
     const transport = this.getTransport(userId, serverId, accountId)
     if (transport && transport.isConnected()) {
+      console.log(`[MCP Runtime] Transport found in memory and connected for instance ${instanceId}`)
       return transport
     }
+    console.log(`[MCP Runtime] Transport not found in memory or not connected for instance ${instanceId}`)
 
     // Transport is missing - check database status
     const supabase = createServiceRoleClient()
@@ -149,6 +153,7 @@ export class MCPServerRuntime {
       console.log(`[MCP Runtime] Cannot recover transport - instance lookup failed:`, instanceError?.message)
       return null
     }
+    console.log(`[MCP Runtime] Instance found in database: status="${instance.status}", transport_type="${instance.transport_type}"`)
 
     // Only attempt recovery if database says "running"
     if (instance.status !== "running") {
@@ -268,8 +273,11 @@ export class MCPServerRuntime {
         console.error(`[MCP Runtime] OAuth account ${accountId} has no refresh token`)
         return null
       }
+      // decryptTokens requires both parameters, but encrypted_access_token can be null in DB
+      // If access_token is null, we'll use refresh_token for both (refresh_token can decrypt as access_token in a pinch)
+      // However, the decrypt function expects valid encrypted strings, so we need to handle null properly
       const tokens = decryptTokens(
-        account.encrypted_access_token || account.encrypted_refresh_token, // Fallback to refresh_token if access_token is null
+        account.encrypted_access_token || account.encrypted_refresh_token,
         account.encrypted_refresh_token
       )
 
