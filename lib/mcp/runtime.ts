@@ -398,9 +398,10 @@ export class MCPServerRuntime {
 
   /**
    * Health check for all instances
+   * Uses service role client to bypass RLS (server-side operation)
    */
   async healthCheck(): Promise<void> {
-    const supabase = await createClient()
+    const supabase = createServiceRoleClient()
     const { data: instances } = await supabase
       .from("mcp_server_instances")
       .select("id, user_id, server_id, account_id, status")
