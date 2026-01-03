@@ -347,34 +347,19 @@ export class MCPServerRuntime {
   /**
    * Find npx command - handles cases where npx is not in PATH
    * On Windows, tries common Node.js installation paths
+   * Returns the command to use - on Windows with full paths, we still use "npx"
+   * because Node.js spawn() should find it via PATH, or we can rely on npm's
+   * location being in PATH (npm and npx are in the same directory)
    */
   findNpxCommand(): string {
-    if (process.platform === "win32") {
-      // Try common Node.js installation locations on Windows
-      const nodePaths = [
-        process.env.PROGRAMFILES + "\\nodejs\\npx.cmd",
-        process.env["PROGRAMFILES(X86)"] + "\\nodejs\\npx.cmd",
-        process.env.LOCALAPPDATA + "\\Programs\\Microsoft VS Code\\resources\\app\\extensions\\node\\node\\npx.cmd",
-      ].filter(Boolean) // Remove undefined entries
-
-      // Also try to find it via npm (which should be in PATH if Node.js is installed)
-      // npm comes with Node.js and npx should be in the same directory
-      try {
-        // On Windows, npm is usually npm.cmd, and npx.cmd is in the same directory
-        // But we can't easily get that path without executing a command
-        // So we'll just try the common paths first, then fall back to "npx"
-        for (const path of nodePaths) {
-          if (existsSync(path)) {
-            console.log(`[MCP Runtime] Found npx at: ${path}`)
-            return path
-          }
-        }
-      } catch (e) {
-        // Ignore errors, fall back to "npx"
-      }
-    }
+    // On Windows, even if npx.cmd exists at a specific path, using the full path
+    // can cause EINVAL errors with spawn() when the path has spaces.
+    // Instead, we rely on Node.js being properly installed with npm/npx in PATH.
+    // If npx is not in PATH, that's a system configuration issue that should be fixed.
     
-    // Fallback: try "npx" (might work if it's in PATH or system PATH)
+    // For now, just return "npx" - if it's not in PATH, the user needs to:
+    // 1. Reinstall Node.js with "Add to PATH" option, or
+    // 2. Add Node.js to system PATH manually
     return "npx"
   }
 
