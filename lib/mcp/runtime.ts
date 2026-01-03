@@ -1,5 +1,8 @@
 import { StdioTransport, HttpTransport, MCPTransport } from "./transport"
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server"
+import { decryptTokens } from "@/lib/oauth/google"
+import { writeFile, mkdir } from "fs/promises"
+import { join } from "path"
 
 export interface MCPServerInstanceConfig {
   id: string
@@ -120,6 +123,173 @@ export class MCPServerRuntime {
   getTransport(userId: string, serverId: string, accountId: string | null): MCPTransport | null {
     const instanceKey = `${userId}:${serverId}:${accountId ?? 'null'}`
     return this.instances.get(instanceKey) || null
+  }
+
+  /**
+   * Get transport with automatic recovery if missing
+   * If transport is missing but database says "running", attempts to re-provision
+   */
+  async getTransportWithRecovery(instanceId: string, userId: string, serverId: string, accountId: string | null): Promise<MCPTransport | null> {
+    // First, check if transport exists in memory
+    const transport = this.getTransport(userId, serverId, accountId)
+    if (transport && transport.isConnected()) {
+      return transport
+    }
+
+    // Transport is missing - check database status
+    const supabase = createServiceRoleClient()
+    const { data: instance, error: instanceError } = await supabase
+      .from("mcp_server_instances")
+      .select("id, status, transport_type")
+      .eq("id", instanceId)
+      .eq("user_id", userId)
+      .maybeSingle()
+
+    if (instanceError || !instance) {
+      console.log(`[MCP Runtime] Cannot recover transport - instance lookup failed:`, instanceError?.message)
+      return null
+    }
+
+    // Only attempt recovery if database says "running"
+    if (instance.status !== "running") {
+      console.log(`[MCP Runtime] Cannot recover transport - instance status is "${instance.status}", not "running"`)
+      return null
+    }
+
+    // Attempt to reconstruct configuration and re-provision
+    console.log(`[MCP Runtime] Transport missing for instance ${instanceId}, attempting auto-recovery...`)
+    try {
+      const config = await this.reconstructConfigFromDatabase(instanceId, userId, serverId, accountId)
+      if (!config) {
+        console.log(`[MCP Runtime] Failed to reconstruct config for instance ${instanceId}`)
+        // Update database status to stopped since we can't recover
+        await this.updateInstanceStatus(instanceId, "stopped")
+        return null
+      }
+
+      // Re-provision using reconstructed config
+      const recoveredTransport = await this.startInstance(config)
+      console.log(`[MCP Runtime] Successfully recovered transport for instance ${instanceId}`)
+      return recoveredTransport
+    } catch (error: any) {
+      console.error(`[MCP Runtime] Auto-recovery failed for instance ${instanceId}:`, error)
+      // Update database status to stopped since recovery failed
+      try {
+        await this.updateInstanceStatus(instanceId, "stopped")
+      } catch (updateError) {
+        console.error(`[MCP Runtime] Failed to update status after recovery failure:`, updateError)
+      }
+      return null
+    }
+  }
+
+  /**
+   * Reconstruct server configuration from database for re-provisioning
+   */
+  private async reconstructConfigFromDatabase(
+    instanceId: string,
+    userId: string,
+    serverId: string,
+    accountId: string | null
+  ): Promise<MCPServerInstanceConfig | null> {
+    const supabase = createServiceRoleClient()
+
+    // Get server info
+    const { data: server, error: serverError } = await supabase
+      .from("mcp_servers")
+      .select("*")
+      .eq("id", serverId)
+      .single()
+
+    if (serverError || !server) {
+      console.error(`[MCP Runtime] Failed to get server info for ${serverId}:`, serverError)
+      return null
+    }
+
+    // Determine command and args
+    let command: string
+    let args: string[] = []
+
+    if (server.name === "google-workspace-mcp" || server.install_command?.includes("google-workspace")) {
+      command = "npx"
+      args = ["-y", "@taylorwilsdon/google-workspace-mcp"]
+    } else if (server.install_command) {
+      const parts = server.install_command.split(" ")
+      command = parts[0]
+      args = parts.slice(1)
+    } else {
+      console.error(`[MCP Runtime] Server ${serverId} has no install_command`)
+      return null
+    }
+
+    // Prepare environment
+    const env: Record<string, string> = {}
+
+    // Handle OAuth if required
+    const serverName = server.name?.toLowerCase() || ""
+    const requiresOAuth = serverName === "google-workspace-mcp"
+
+    if (requiresOAuth && accountId) {
+      // Get OAuth account
+      const { data: account, error: accountError } = await supabase
+        .from("oauth_accounts")
+        .select("id, encrypted_access_token, encrypted_refresh_token")
+        .eq("id", accountId)
+        .eq("user_id", userId)
+        .single()
+
+      if (accountError || !account) {
+        console.error(`[MCP Runtime] Failed to get OAuth account ${accountId}:`, accountError)
+        return null
+      }
+
+      // Decrypt tokens (access_token may be null, but refresh_token is required)
+      if (!account.encrypted_refresh_token) {
+        console.error(`[MCP Runtime] OAuth account ${accountId} has no refresh token`)
+        return null
+      }
+      const tokens = decryptTokens(
+        account.encrypted_access_token || account.encrypted_refresh_token, // Fallback to refresh_token if access_token is null
+        account.encrypted_refresh_token
+      )
+
+      // Create token file
+      const tokenDir = join(process.cwd(), ".mcp-tokens", userId, accountId)
+      await mkdir(tokenDir, { recursive: true })
+      const tokenFile = join(tokenDir, "token.json")
+      await writeFile(
+        tokenFile,
+        JSON.stringify({
+          access_token: tokens.access_token,
+          refresh_token: tokens.refresh_token,
+        }),
+        "utf8"
+      )
+
+      env.GOOGLE_TOKEN_FILE = tokenFile
+      if (tokens.refresh_token) {
+        env.GOOGLE_OAUTH_TOKEN = tokens.refresh_token
+      }
+      if (tokens.access_token) {
+        env.NEXUS_AUTH_TOKEN = tokens.access_token
+      }
+    }
+
+    // Add Nexus environment variables (if needed by the sandbox)
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+    env.NEXUS_SERVER_URL = baseUrl
+    env.NEXUS_INSTANCE_ID = instanceId
+
+    return {
+      id: instanceId,
+      user_id: userId,
+      server_id: serverId,
+      account_id: accountId,
+      transport_type: "stdio",
+      command,
+      args,
+      env,
+    }
   }
 
   /**

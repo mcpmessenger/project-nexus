@@ -134,12 +134,16 @@ export async function POST(request: Request) {
       }
     }
 
-    // Get transport
-    const transport = mcpRuntime.getTransport(instance.user_id, instance.server_id, instance.account_id)
+    // Get transport with automatic recovery
+    const transport = await mcpRuntime.getTransportWithRecovery(
+      instance.id,
+      instance.user_id,
+      instance.server_id,
+      instance.account_id
+    )
 
     if (!transport || !transport.isConnected()) {
-      // Transport not in memory - this indicates dev server restart or process crash
-      // Provide helpful error message
+      // Transport not available and recovery failed
       return NextResponse.json({ 
         error: "Transport not available. The server instance may have stopped. Please re-provision the server." 
       }, { status: 503 })
