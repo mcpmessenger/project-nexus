@@ -1,6 +1,10 @@
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { mcpRuntime } from "@/lib/mcp/runtime"
 import { NextResponse } from "next/server"
+import { exec } from "child_process"
+import { promisify } from "util"
+
+const execAsync = promisify(exec)
 
 export async function POST(request: Request) {
   try {
@@ -69,7 +73,7 @@ export async function POST(request: Request) {
     
     const { data: instance, error: instanceError } = await queryClient
       .from("mcp_server_instances")
-      .select("id, user_id, server_id, account_id, transport_type, status")
+      .select("id, user_id, server_id, account_id, transport_type, status, process_id")
       .eq("id", server_instance_id)
       .eq("user_id", user.id)
       .maybeSingle()
@@ -96,11 +100,49 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Instance is not running" }, { status: 400 })
     }
 
+    // Verify process is actually running (if process_id exists and transport_type is stdio)
+    if (instance.process_id && instance.transport_type === "stdio") {
+      try {
+        const platform = process.platform
+        if (platform === "win32") {
+          // Windows: use tasklist to check if process exists
+          await execAsync(`tasklist /FI "PID eq ${instance.process_id}"`)
+        } else {
+          // Unix/Linux/Mac: use kill -0 to check if process exists (doesn't kill, just checks)
+          await execAsync(`kill -0 ${instance.process_id}`)
+        }
+        // Process exists - continue
+      } catch (processCheckError: any) {
+        // Process doesn't exist - update database status and return error
+        console.log(`[MCP Call] Process ${instance.process_id} not found - updating database status to stopped`)
+        try {
+          const serviceRoleClient = createServiceRoleClient()
+          await serviceRoleClient
+            .from("mcp_server_instances")
+            .update({
+              status: "stopped",
+              updated_at: new Date().toISOString(),
+            })
+            .eq("id", instance.id)
+          console.log(`[MCP Call] Database status updated to stopped for instance ${instance.id}`)
+        } catch (updateError) {
+          console.error(`[MCP Call] Failed to update instance status:`, updateError)
+        }
+        return NextResponse.json({ 
+          error: "Server instance process is not running. Please re-provision the server." 
+        }, { status: 503 })
+      }
+    }
+
     // Get transport
     const transport = mcpRuntime.getTransport(instance.user_id, instance.server_id, instance.account_id)
 
     if (!transport || !transport.isConnected()) {
-      return NextResponse.json({ error: "Transport not available" }, { status: 503 })
+      // Transport not in memory - this indicates dev server restart or process crash
+      // Provide helpful error message
+      return NextResponse.json({ 
+        error: "Transport not available. The server instance may have stopped. Please re-provision the server." 
+      }, { status: 503 })
     }
 
     // Make MCP call
