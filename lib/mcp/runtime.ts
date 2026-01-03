@@ -1,5 +1,5 @@
 import { StdioTransport, HttpTransport, MCPTransport } from "./transport"
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server"
 
 export interface MCPServerInstanceConfig {
   id: string
@@ -132,9 +132,11 @@ export class MCPServerRuntime {
 
   /**
    * Update instance status in database
+   * Uses service role client to bypass RLS (server-side operation)
    */
   private async updateInstanceStatus(instanceId: string, status: string): Promise<void> {
-    const supabase = await createClient()
+    // Use service role client to bypass RLS for server-side status updates
+    const supabase = createServiceRoleClient()
     const { data, error } = await supabase
       .from("mcp_server_instances")
       .update({

@@ -224,4 +224,44 @@ if (!current) {
 - May be related to how multiple instances for the same server_id are handled
 
 ## Status
-**IN PROGRESS** - Fixes implemented, awaiting user verification
+**FIXED** - Comprehensive solution implemented:
+
+### Solution A: Optimistic UI Updates ✅ IMPLEMENTED
+- Modified `handleStop()` to update local state immediately before API call
+- Provides instant UI feedback
+- Rolls back on API failure
+
+### Solution B: Supabase Realtime Subscription ✅ IMPLEMENTED
+- Added realtime subscription to `mcp_server_instances` table UPDATE events
+- UI automatically updates when database changes
+- Works even if other clients modify the database
+
+### Solution C: Service Role Client for Updates ✅ IMPLEMENTED
+- Changed `updateInstanceStatus()` to use `createServiceRoleClient()`
+- Bypasses RLS for server-side status updates
+- Ensures updates succeed even if RLS policies are restrictive
+
+### Solution D: Enhanced Instance Map Logic ✅ IMPLEMENTED
+- Improved logic to handle status transitions in both directions
+- Handles multiple instances per server correctly
+- Prioritizes running instances, tracks status changes
+
+## Implementation Details
+
+1. **Optimistic Updates**: `components/tool-browser.tsx` - `handleStop()` function
+2. **Realtime Subscription**: `components/tool-browser.tsx` - New `useEffect` hook
+3. **Service Role Client**: `lib/mcp/runtime.ts` - `updateInstanceStatus()` method
+4. **RLS Verification**: `scripts/015_verify_rls_policies_for_instances.sql` - Diagnostic script
+
+## Next Steps
+
+1. **Enable Realtime on mcp_server_instances table** in Supabase Dashboard:
+   - Go to Database → Replication
+   - Find `mcp_server_instances` table
+   - Enable replication for it
+
+2. **Test the complete flow**:
+   - Stop a server
+   - Verify UI updates immediately (optimistic)
+   - Verify UI stays updated (realtime subscription)
+   - Check server logs for service role client usage

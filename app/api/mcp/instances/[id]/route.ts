@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { mcpRuntime } from "@/lib/mcp/runtime"
 import { NextResponse } from "next/server"
 import { exec } from "child_process"
@@ -74,19 +74,35 @@ export async function DELETE(
     // Stop the instance (this will close transport if in memory and update database status)
     await mcpRuntime.stopInstance(instance.user_id, instance.server_id, instance.account_id)
 
-    // Double-check: Ensure database status is updated (in case runtime update failed)
-    const { error: updateError } = await supabase
-      .from("mcp_server_instances")
-      .update({
-        status: "stopped",
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", id)
+    // Double-check: Ensure database status is updated using service role (bypasses RLS)
+    try {
+      const serviceRoleClient = createServiceRoleClient()
+      const { error: updateError } = await serviceRoleClient
+        .from("mcp_server_instances")
+        .update({
+          status: "stopped",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
 
-    if (updateError) {
-      console.error(`[MCP Instances] Failed to update status in database:`, updateError)
-    } else {
-      console.log(`[MCP Instances] Confirmed database status updated to stopped for instance ${id}`)
+      if (updateError) {
+        console.error(`[MCP Instances] Failed to update status in database:`, updateError)
+      } else {
+        console.log(`[MCP Instances] Confirmed database status updated to stopped for instance ${id}`)
+      }
+    } catch (serviceRoleError: any) {
+      console.error(`[MCP Instances] Service role client error:`, serviceRoleError)
+      // Fallback to regular client (may fail due to RLS, but we tried)
+      const { error: updateError } = await supabase
+        .from("mcp_server_instances")
+        .update({
+          status: "stopped",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", id)
+      if (updateError) {
+        console.error(`[MCP Instances] Fallback update also failed:`, updateError)
+      }
     }
 
     console.log(`[MCP Instances] Instance ${id} stopped successfully`)

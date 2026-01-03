@@ -40,6 +40,46 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
     checkSignedIn()
   }, [])
 
+  // Subscribe to instance status changes via Supabase Realtime
+  useEffect(() => {
+    if (!isSignedIn) return
+
+    const channel = supabase
+      .channel('instance-status-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'mcp_server_instances',
+        },
+        (payload) => {
+          const updatedInstance = payload.new as MCPServerInstance
+          console.log('[ToolBrowser] Realtime update received:', updatedInstance)
+          setInstanceMap((prev) => {
+            const current = prev[updatedInstance.server_id]
+            // Update if this is a status change or if it's more recent
+            if (!current || 
+                updatedInstance.status === 'running' || 
+                (current.status === 'running' && updatedInstance.status !== 'running') ||
+                (updatedInstance.updated_at && current.updated_at && 
+                 new Date(updatedInstance.updated_at) > new Date(current.updated_at))) {
+              return {
+                ...prev,
+                [updatedInstance.server_id]: updatedInstance,
+              }
+            }
+            return prev
+          })
+        }
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [isSignedIn, supabase])
+
   async function checkSignedIn() {
     try {
       const {
@@ -202,7 +242,21 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
   async function handleStop(instanceId: string) {
     console.log("[ToolBrowser] handleStop called with instanceId:", instanceId)
     setProvisionError(null)
+    
+    // Find the instance and server_id for optimistic update
+    const instance = Object.values(instanceMap).find(inst => inst.id === instanceId)
+    const serverId = instance?.server_id
+    
+    // Optimistic UI Update: Update local state immediately
+    if (instance && serverId) {
+      setInstanceMap(prev => ({
+        ...prev,
+        [serverId]: { ...instance, status: 'stopped' as const }
+      }))
+    }
+    
     setStoppingServers((prev) => [...prev, instanceId])
+    
     try {
       console.log(`[ToolBrowser] Calling DELETE /api/mcp/instances/${instanceId}`)
       const res = await fetch(`/api/mcp/instances/${instanceId}`, {
@@ -220,14 +274,19 @@ export function ToolBrowser({ onSelectTool, selectedToolId }: ToolBrowserProps) 
       const result = await res.json()
       console.log("[ToolBrowser] Stop request succeeded:", result)
 
-      // Force refresh instances with a small delay to ensure DB is updated
-      await new Promise(resolve => setTimeout(resolve, 500))
+      // Background sync - Realtime subscription will handle the update, but refresh as backup
       await fetchInstances()
-      
-      // Also refresh the full data to ensure UI updates
-      await fetchData()
     } catch (err: any) {
       console.error("[ToolBrowser] Stop failed:", err)
+      
+      // Rollback optimistic update on failure
+      if (instance && serverId) {
+        setInstanceMap(prev => ({
+          ...prev,
+          [serverId]: instance // Revert to original state
+        }))
+      }
+      
       setProvisionError(err.message || "Failed to stop server")
     } finally {
       setStoppingServers((prev) => prev.filter((id) => id !== instanceId))
