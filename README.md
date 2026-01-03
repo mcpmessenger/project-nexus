@@ -23,10 +23,13 @@ Project Nexus is a **next-generation platform** that brings together:
 
 - **Smart Tool Discovery** - Vector embeddings for semantic tool search
 - **Code Wizard** - Visual form builder that generates Python code from tool schemas (no coding required!)
-- **Python SDK** - Write code that interacts with Google Workspace via MCP
+- **Python SDK** - Write code that interacts with MCP tools and Google Workspace
 - **Multi-Account Support** - Link work and personal Google accounts
 - **Incremental Permissions** - Request only the scopes you need, when you need them
 - **Real-time Execution** - Watch your code run with live telemetry
+- **MCP Server Management** - Provision, monitor, start, and stop MCP servers on-demand
+- **Auto-Recovery** - Automatic transport recovery if servers disconnect
+- **Secure API Key Storage** - Per-user encrypted storage for API keys
 - **Modern UI** - Beautiful, responsive interface built with Next.js and Tailwind
 
 ---
@@ -90,21 +93,28 @@ See [Environment Variables](#-environment-variables) section for details.
 
 ### 3️⃣ Database Setup
 
-Run the SQL migration scripts in order:
+Run the SQL migration scripts in order using the Supabase SQL Editor:
 
-```bash
-# Connect to your Supabase database and run:
-psql <your-supabase-connection-string> -f scripts/001_enable_pgvector.sql
-psql <your-supabase-connection-string> -f scripts/002_create_mcp_tables.sql
-psql <your-supabase-connection-string> -f scripts/003_seed_sample_data.sql
-psql <your-supabase-connection-string> -f scripts/004_create_rls_policies.sql
-psql <your-supabase-connection-string> -f scripts/005_create_search_function.sql
-psql <your-supabase-connection-string> -f scripts/006_google_workspace_schema.sql
-psql <your-supabase-connection-string> -f scripts/007_add_mcp_server_logos.sql
-psql <your-supabase-connection-string> -f scripts/008_add_new_mcp_servers.sql
+1. Navigate to your Supabase Dashboard → SQL Editor
+2. Run the following scripts in order:
+
+```
+scripts/001_enable_pgvector.sql
+scripts/002_create_mcp_tables.sql
+scripts/003_seed_sample_data.sql
+scripts/004_create_rls_policies.sql
+scripts/005_create_search_function.sql
+scripts/006_google_workspace_schema.sql
+scripts/007_add_mcp_server_logos.sql
+scripts/008_add_new_mcp_servers.sql
+scripts/009_seed_all_servers_with_logos.sql
+scripts/010_create_user_secrets_table.sql
+scripts/012_add_delete_policy_for_executions.sql
+scripts/013_add_update_policy_for_executions.sql
+scripts/016_enable_realtime_for_instances.sql
 ```
 
-Or use the Supabase SQL Editor to run them one by one.
+Or use the `COMPLETE_SETUP.sql` file for a full setup in one go. See `scripts/RUN_MIGRATIONS.md` for detailed instructions.
 
 ### 4️⃣ Run Development Server
 
@@ -126,6 +136,7 @@ Open [http://localhost:3000](http://localhost:3000) 🎉
 |----------|-------------|---------|
 | `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL | `https://xxxxx.supabase.co` |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous key | `eyJhbGc...` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key (for server-side operations) | `eyJhbGc...` |
 | `GOOGLE_CLIENT_ID` | Google OAuth client ID | `xxxxx.apps.googleusercontent.com` |
 | `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | `GOCSPX-xxxxx` |
 | `ENCRYPTION_KEY` | 32-byte hex key for token encryption | `a1b2c3d4...` (64 chars) |
@@ -134,8 +145,11 @@ Open [http://localhost:3000](http://localhost:3000) 🎉
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NEXT_PUBLIC_APP_URL` | Your app's public URL | `http://localhost:3000` |
+| `NEXT_PUBLIC_BASE_URL` | Your app's public URL (used by MCP servers) | `http://localhost:3000` |
+| `NEXT_PUBLIC_APP_URL` | Your app's public URL (legacy, use NEXT_PUBLIC_BASE_URL) | `http://localhost:3000` |
 | `GOOGLE_REDIRECT_URI` | OAuth callback URL | `${NEXT_PUBLIC_APP_URL}/api/oauth/google/callback` |
+
+> **Note**: API keys for MCP servers (like `BRAVE_API_KEY`, `MAPS_API_KEY`) are stored securely in the database via the Settings page, not in environment variables.
 
 ### 🔐 Generating Encryption Key
 
@@ -158,10 +172,19 @@ python -c "import secrets; print(secrets.token_hex(32))"
 
 ### 🔌 Connecting Google Workspace
 
-1. **Click "Connect Google Account"** in the UI
+1. **Click "Connect Google Account"** in the UI (avatar icon in top right)
 2. **Authorize** in the popup window
 3. **Select account** from the account switcher
 4. **Start coding!** Use the Python SDK in the sandbox
+
+### 🔑 Managing API Keys
+
+Some MCP servers require API keys (e.g., `brave-search` needs `BRAVE_API_KEY`, `google-maps` needs `MAPS_API_KEY`):
+
+1. **Navigate to Settings** (click the avatar icon → Settings)
+2. **Add your API keys** using the secure form
+3. **Keys are encrypted** and stored per-user in the database
+4. **Provision servers** - API keys are automatically passed to MCP server processes
 
 ### 💻 Using the Python SDK
 
@@ -381,10 +404,31 @@ We love contributions! Here's how:
 
 ### MCP Server Issues
 
-**Problem**: "Instance not running"
-- ✅ Check server provisioning logs
-- ✅ Verify OAuth tokens are valid
-- ✅ Check process is running: `ps aux | grep mcp`
+**Problem**: "Transport not available" or "Instance not running"
+- ✅ Check server provisioning logs in the browser console
+- ✅ Verify API keys are set (Settings page) if the server requires them
+- ✅ Try stopping and re-provisioning the server
+- ✅ Check that `SUPABASE_SERVICE_ROLE_KEY` is set in environment variables
+- ✅ The system will auto-recover if the server process crashes
+
+**Problem**: "BRAVE_API_KEY environment variable is required"
+- ✅ Navigate to Settings page
+- ✅ Add your `BRAVE_API_KEY` (or other required API keys)
+- ✅ Stop and re-provision the server to pick up the new API key
+
+---
+
+## 🔄 Recent Updates
+
+### January 2025
+
+- ✅ **Fixed MCP Server Process Spawning** - Resolved `npx` command resolution on Windows
+- ✅ **Added Transport Auto-Recovery** - Automatic re-provisioning if servers disconnect
+- ✅ **API Key Management** - Secure per-user storage and automatic injection into MCP servers
+- ✅ **Improved Error Handling** - Better process verification and status synchronization
+- ✅ **Code Wizard Enhancement** - Examples now prepopulate from tool schemas
+
+See the commit history for detailed changelog.
 
 ---
 
