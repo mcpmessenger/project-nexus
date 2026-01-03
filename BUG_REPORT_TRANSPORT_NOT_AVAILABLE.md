@@ -133,13 +133,64 @@ HTTP Error 503: Service Unavailable
 - **Action**: Multiple attempts to provision servers via UI
 - **Result**: Error persists, suggesting transport is not being created or is immediately lost
 
+### 7. Console Log Analysis ✅
+- **Observation**: Console logs show successful start/stop operations at database level
+- **Finding**: Database status updates work correctly, but transport availability doesn't match
+- **Pattern Identified**: Provision API returns success, database shows "running", but transport lookup fails
+- **Hypothesis**: Transport creation in `startInstance()` may be failing silently, or transport is not being stored in the Map correctly
+
 ## Evidence
 
-### Console Logs
+### Console Logs - Server Operations (From Development Console)
+
+**Successful Stop Operations:**
+```
+DELETE /api/mcp/instances/TYFO8-9CG-6428-11e4-b778-9C9D73AA927B 200 OK
+[MCP Runtime] Stopping transport for key: c135a...
+[MCP Runtime] Transport stopped and removed from map
+[MCP Instances] Attempting to kill process ... on Windows using taskkill
+[MCP Instances] Successfully killed process ... and its children on Windows
+[MCP Runtime] Successfully updated instance TYFO8-9CG... status to stopped
+[MCP Instances] Confirmed database status updated to stopped for instance ...
+```
+- Stop operations are completing successfully
+- Process termination works correctly (taskkill on Windows)
+- Database status updates are confirmed
+
+**Successful Start Operations:**
+```
+[MCP Instances] Successfully updated instance 'TYFO8-9CG-6428-11e4-b778-9C9D73AA927B' status to running
+```
+- Provision operations are updating database status to "running"
+- API calls return success
+
+**Persistent Transport Errors:**
+```
+POST /api/mcp/call 503 Service Unavailable
+error: "MCPCallError: Failed to call MCP tool: Transport not available"
+urllib.error.HTTPError: HTTP Error 503: Service Unavailable
+File "scripts/nexus_sdk/mcp.py", line 116, in call
+```
+- Errors occur **after** successful start/stop operations
+- Confirms transport lookup fails even when database says "running"
+
+### Key Observation from Logs
+The logs show a **critical pattern**:
+1. ✅ Instance provisioning succeeds (database updated to "running")
+2. ✅ Instance stopping succeeds (process killed, database updated to "stopped")
+3. ❌ **But transport is NOT available when MCP calls are made, even after successful provisioning**
+
+This suggests the transport is either:
+- Never being created during `startInstance()` despite success response
+- Being created but immediately removed/lost before use
+- Being created but not stored/retrieved correctly from the `instances` Map
+
+### ToolBrowser Instance Map Issue
 ```
 [ToolBrowser] Processed instances map: (2) [{-}, {-}]
 ```
 - Empty instance objects suggest instances exist in database but data isn't being properly loaded/displayed
+- May indicate serialization issue or data structure problem
 
 ### Error Stack Trace
 ```
