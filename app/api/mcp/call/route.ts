@@ -100,20 +100,31 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Instance is not running" }, { status: 400 })
     }
 
-    // Verify process is actually running (if process_id exists and transport_type is stdio)
-    if (instance.process_id && instance.transport_type === "stdio") {
+    // Get transport with automatic recovery (recovery will handle process verification)
+    const transport = await mcpRuntime.getTransportWithRecovery(
+      instance.id,
+      instance.user_id,
+      instance.server_id,
+      instance.account_id
+    )
+
+    // If recovery returned null, verify process status for better error message
+    if (!transport && instance.process_id && instance.transport_type === "stdio") {
       try {
         const platform = process.platform
         if (platform === "win32") {
           // Windows: use tasklist to check if process exists
           await execAsync(`tasklist /FI "PID eq ${instance.process_id}"`)
+          // Process exists but recovery failed - this shouldn't happen, but provide error
+          console.log(`[MCP Call] Process ${instance.process_id} exists but transport recovery failed`)
         } else {
           // Unix/Linux/Mac: use kill -0 to check if process exists (doesn't kill, just checks)
           await execAsync(`kill -0 ${instance.process_id}`)
+          // Process exists but recovery failed - this shouldn't happen, but provide error
+          console.log(`[MCP Call] Process ${instance.process_id} exists but transport recovery failed`)
         }
-        // Process exists - continue
       } catch (processCheckError: any) {
-        // Process doesn't exist - update database status and return error
+        // Process doesn't exist - update database status (recovery already tried and failed)
         console.log(`[MCP Call] Process ${instance.process_id} not found - updating database status to stopped`)
         try {
           const serviceRoleClient = createServiceRoleClient()
@@ -128,19 +139,8 @@ export async function POST(request: Request) {
         } catch (updateError) {
           console.error(`[MCP Call] Failed to update instance status:`, updateError)
         }
-        return NextResponse.json({ 
-          error: "Server instance process is not running. Please re-provision the server." 
-        }, { status: 503 })
       }
     }
-
-    // Get transport with automatic recovery
-    const transport = await mcpRuntime.getTransportWithRecovery(
-      instance.id,
-      instance.user_id,
-      instance.server_id,
-      instance.account_id
-    )
 
     if (!transport || !transport.isConnected()) {
       // Transport not available and recovery failed
