@@ -1,15 +1,16 @@
 "use client"
 
+import Link from "next/link"
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { Sparkles, Code2, Copy, Check } from "lucide-react"
-import type { MCPTool } from "@/lib/types"
+import type { MCPServer, MCPTool, UserSecret } from "@/lib/types"
 
 interface CodeWizardProps {
-  tool: MCPTool | null
+  tool: (MCPTool & { server?: MCPServer | null }) | null
   onCodeGenerated: (code: string) => void
 }
 
@@ -45,7 +46,8 @@ function toPythonLiteral(value: any, indent = 0): string {
     const keys = Object.keys(value)
     if (keys.length === 0) return "{}"
     const items = keys.map(key => {
-      const pyKey = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(key) ? key : JSON.stringify(key)
+      // Always quote dictionary keys as strings in Python
+      const pyKey = JSON.stringify(key)
       const pyValue = toPythonLiteral(value[key], indent + 1)
       return `${indentStr}  ${pyKey}: ${pyValue}`
     }).join(",\n")
@@ -74,8 +76,6 @@ function generatePythonCode(toolName: string, formData: Record<string, any>): st
   
   const codeLines = [
     `# Generated code for ${toolName}`,
-    "import json",
-    "",
     "# Tool input",
     `tool_input = ${pythonDict}`,
     "",
@@ -97,6 +97,17 @@ function generatePythonCode(toolName: string, formData: Record<string, any>): st
   ]
 
   return codeLines.join("\n")
+}
+
+const PREFLIGHT_REQUIREMENTS: Record<string, { key: "BRAVE_API_KEY" | "MAPS_API_KEY"; message: string }> = {
+  "brave-search": {
+    key: "BRAVE_API_KEY",
+    message: "Brave Search tools need a bound BRAVE_API_KEY to access the API.",
+  },
+  "maps-grounding-lite": {
+    key: "MAPS_API_KEY",
+    message: "Maps tools rely on MAPS_API_KEY for Google Maps responses.",
+  },
 }
 
 // Render form field based on JSON schema property
@@ -278,11 +289,40 @@ function renderFormField(
 export function CodeWizard({ tool, onCodeGenerated }: CodeWizardProps) {
   const [formData, setFormData] = useState<Record<string, any>>({})
   const [copied, setCopied] = useState(false)
+  const [secretMap, setSecretMap] = useState<Record<string, string>>({})
 
   // Reset form data when tool changes
   useEffect(() => {
     setFormData({})
   }, [tool?.id])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function loadSecrets() {
+      try {
+        const res = await fetch("/api/settings/secrets")
+        if (!res.ok) {
+          throw new Error("Failed to load secrets")
+        }
+        const data: UserSecret[] = await res.json()
+        if (!isMounted) return
+
+        const map: Record<string, string> = {}
+        data.forEach((secret) => {
+          map[secret.key] = secret.value
+        })
+        setSecretMap(map)
+      } catch (error) {
+        console.error("[CodeWizard] Failed to load secrets:", error)
+      }
+    }
+
+    loadSecrets()
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   if (!tool || !tool.input_schema) {
     return (
@@ -300,6 +340,10 @@ export function CodeWizard({ tool, onCodeGenerated }: CodeWizardProps) {
   const properties = schema.properties || {}
   const required = schema.required || []
 
+  const serverName = tool?.server?.name?.toLowerCase()
+  const requirement = serverName ? PREFLIGHT_REQUIREMENTS[serverName] : undefined
+  const requirementMissing = requirement && !secretMap[requirement.key]
+
   const handleFieldChange = (key: string, value: any) => {
     setFormData((prev) => ({
       ...prev,
@@ -308,7 +352,9 @@ export function CodeWizard({ tool, onCodeGenerated }: CodeWizardProps) {
   }
 
   const handleGenerateCode = () => {
+    console.log("[CodeWizard] Form data:", formData)
     const code = generatePythonCode(tool.name, formData)
+    console.log("[CodeWizard] Generated code:", code)
     onCodeGenerated(code)
   }
 
@@ -327,6 +373,14 @@ export function CodeWizard({ tool, onCodeGenerated }: CodeWizardProps) {
 
   return (
     <div className="space-y-4">
+      {tool && requirementMissing && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <span>⚠️ {requirement?.message}</span>
+          <Link href="/settings" className="ml-2 font-semibold underline">
+            Configure
+          </Link>
+        </div>
+      )}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-semibold">Code Wizard</h3>

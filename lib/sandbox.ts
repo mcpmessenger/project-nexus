@@ -1,7 +1,4 @@
-import { exec } from "child_process"
-import { promisify } from "util"
-
-const execAsync = promisify(exec)
+import { spawn, ChildProcess } from "child_process"
 
 export interface SandboxResult {
   stdout: string
@@ -15,6 +12,8 @@ export async function executePythonCode(
   options?: {
     nexus_api_url?: string
     server_instance_id?: string
+    nexus_auth_token?: string
+    env?: Record<string, string>
   }
 ): Promise<SandboxResult> {
   try {
@@ -26,14 +25,73 @@ export async function executePythonCode(
     if (options?.server_instance_id) {
       inputData.server_instance_id = options.server_instance_id
     }
+    if (options?.nexus_auth_token) {
+      inputData.nexus_auth_token = options.nexus_auth_token
+    }
 
     const input = JSON.stringify(inputData)
 
-    // Execute Python sandbox script
-    const { stdout, stderr } = await execAsync(`python3 scripts/python_sandbox.py`, {
-      input,
-      timeout: 30000, // 30 second timeout
-      maxBuffer: 1024 * 1024, // 1MB buffer
+    const execEnv = {
+      ...process.env,
+      ...options?.env,
+    }
+
+    // Determine Python command (Windows uses 'py', Unix uses 'python3')
+    // On Windows, use full path to py.exe to avoid PATH issues
+    let pythonCmd: string
+    if (process.platform === 'win32') {
+      // Use full path to Python launcher (usually in C:\WINDOWS\py.exe)
+      pythonCmd = process.env.WINDIR ? `${process.env.WINDIR}\\py.exe` : 'C:\\WINDOWS\\py.exe'
+    } else {
+      pythonCmd = 'python3'
+    }
+
+    // Execute Python sandbox script using spawn (supports stdin/stdout pipes)
+    const { stdout, stderr } = await new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+      const child: ChildProcess = spawn(pythonCmd, ['scripts/python_sandbox.py'], {
+        env: execEnv,
+        cwd: process.cwd(),
+        stdio: ['pipe', 'pipe', 'pipe'],
+      })
+
+      let stdoutData = ''
+      let stderrData = ''
+
+      child.stdout?.on('data', (data: Buffer) => {
+        stdoutData += data.toString()
+      })
+
+      child.stderr?.on('data', (data: Buffer) => {
+        stderrData += data.toString()
+      })
+
+      child.on('error', (error) => {
+        clearTimeout(timeout)
+        reject(error)
+      })
+
+      // Timeout after 30 seconds
+      const timeout = setTimeout(() => {
+        child.kill()
+        reject(new Error('Execution timeout after 30 seconds'))
+      }, 30000)
+
+      child.on('exit', (code) => {
+        clearTimeout(timeout)
+        if (code !== 0) {
+          reject(new Error(`Process exited with code ${code}: ${stderrData || stdoutData}`))
+        } else {
+          resolve({ stdout: stdoutData, stderr: stderrData })
+        }
+      })
+
+      // Write input to stdin and close it
+      if (child.stdin) {
+        child.stdin.write(input)
+        child.stdin.end()
+      } else {
+        reject(new Error('Failed to open stdin'))
+      }
     })
 
     // Parse the JSON result from Python script
@@ -49,9 +107,17 @@ export async function executePythonCode(
       }
     }
   } catch (error: any) {
+    console.error("[Sandbox] Python execution error:", error)
+    console.error("[Sandbox] Error details:", {
+      message: error.message,
+      stderr: error.stderr,
+      stdout: error.stdout,
+      code: error.code,
+      signal: error.signal,
+    })
     return {
-      stdout: "",
-      stderr: error.stderr || "",
+      stdout: error.stdout || "",
+      stderr: error.stderr || error.message || "",
       return_value: null,
       error: error.message || "Execution failed",
     }

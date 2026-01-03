@@ -25,3 +25,9 @@ CREATE POLICY "Allow public insert to sandbox_executions"
 CREATE POLICY "Allow public read access to sandbox_executions"
   ON sandbox_executions FOR SELECT
   USING (true);
+
+-- Allow public update for sandbox executions (needed to update status after execution)
+CREATE POLICY "Allow public update to sandbox_executions"
+  ON sandbox_executions FOR UPDATE
+  USING (true)
+  WITH CHECK (true);

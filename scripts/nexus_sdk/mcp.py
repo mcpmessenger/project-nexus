@@ -37,16 +37,29 @@ class MCP:
         result = mcp.call("brave_web_search", {"query": "Python tutorials"})
     """
     
-    def __init__(self, base_url=None, server_instance_id=None):
+    def __init__(self, base_url=None, server_instance_id=None, auth_token=None):
         """
         Initialize MCP client
         
         Args:
             base_url: Base URL for Nexus API (defaults to environment variable or localhost)
             server_instance_id: MCP server instance ID (defaults to environment variable)
+            auth_token: Optional bearer token for authenticating Nexus requests
         """
         self.base_url = base_url or os.environ.get('NEXUS_API_URL', 'http://localhost:3000')
-        self.server_instance_id = server_instance_id or os.environ.get('NEXUS_SERVER_INSTANCE_ID')
+        env_instance_id = os.environ.get('NEXUS_SERVER_INSTANCE_ID') or os.environ.get('NEXUS_INSTANCE_ID')
+        self.server_instance_id = server_instance_id or env_instance_id
+        self.auth_token = auth_token or os.environ.get('NEXUS_AUTH_TOKEN')
+        
+        # #region agent log
+        try:
+            import json
+            log_data = json.dumps({"location":"mcp.py:52","message":"MCP init","data":{"serverInstanceId":self.server_instance_id,"fromParam":server_instance_id,"fromEnv":env_instance_id,"hasAuthToken":bool(self.auth_token)},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"E"})
+            with open(r'c:\Users\senti\OneDrive\Desktop\project-nexus\project-nexus-main\.cursor\debug.log', 'a') as f:
+                f.write(log_data + '\n')
+        except:
+            pass
+        # #endregion
         
         if not self.server_instance_id:
             raise ValueError(
@@ -74,17 +87,44 @@ class MCP:
             }
         }
         
+        # #region agent log
+        try:
+            import json
+            log_data = json.dumps({"location":"mcp.py:77","message":"Making MCP call","data":{"serverInstanceId":self.server_instance_id,"method":"tools/call","toolName":tool_name,"baseUrl":self.base_url},"timestamp":int(__import__('time').time()*1000),"sessionId":"debug-session","runId":"run1","hypothesisId":"C"})
+            with open(r'c:\Users\senti\OneDrive\Desktop\project-nexus\project-nexus-main\.cursor\debug.log', 'a') as f:
+                f.write(log_data + '\n')
+        except:
+            pass
+        # #endregion
+        
+        headers = {
+            "Content-Type": "application/json",
+        }
+        if self.auth_token:
+            headers["Authorization"] = f"Bearer {self.auth_token}"
+
         try:
             if HAS_REQUESTS:
-                response = requests.post(url, json=payload, timeout=30)
+                response = requests.post(url, json=payload, headers=headers, timeout=30)
                 response.raise_for_status()
                 data = response.json()
             else:
                 # Fallback to urllib
                 req_data = json.dumps(payload).encode('utf-8')
-                req = urllib.request.Request(url, data=req_data, headers={'Content-Type': 'application/json'})
-                with urllib.request.urlopen(req, timeout=30) as response:
-                    data = json.loads(response.read().decode('utf-8'))
+                req = urllib.request.Request(url, data=req_data, headers=headers)
+                try:
+                    with urllib.request.urlopen(req, timeout=30) as response:
+                        data = json.loads(response.read().decode('utf-8'))
+                except urllib.error.HTTPError as e:
+                    # Try to read error response body
+                    error_body = ""
+                    try:
+                        error_body = e.read().decode('utf-8')
+                        error_data = json.loads(error_body)
+                        error_msg = error_data.get('error', str(e))
+                    except:
+                        error_msg = f"HTTP Error {e.code}: {e.reason}"
+                    raise MCPCallError(f"Failed to call MCP tool: {error_msg}")
             
             if 'error' in data:
                 raise MCPCallError(f"MCP call failed: {data['error']}")

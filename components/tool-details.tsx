@@ -26,15 +26,71 @@ export function ToolDetails({ tool, onExecute }: ToolDetailsProps) {
 
   function handleRunExample() {
     if (tool.example_usage) {
+      // Parse example_usage - it should be a JSON string or Python dict literal
+      let exampleValue = tool.example_usage.trim()
+      
+      // Try to parse as JSON first (most common format)
+      let parsedValue: any
+      try {
+        parsedValue = JSON.parse(exampleValue)
+      } catch {
+        // If not JSON, try to extract JSON from text like "Search the web: {...}"
+        const jsonMatch = exampleValue.match(/\{[\s\S]*\}/)
+        if (jsonMatch) {
+          try {
+            parsedValue = JSON.parse(jsonMatch[0])
+          } catch {
+            // If still can't parse, use as string literal
+            parsedValue = exampleValue
+          }
+        } else {
+          // Use as-is if no JSON found
+          parsedValue = exampleValue
+        }
+      }
+      
+      // Convert to Python literal format
+      const toPythonLiteral = (value: any): string => {
+        if (value === null || value === undefined) return "None"
+        if (typeof value === "string") return JSON.stringify(value)
+        if (typeof value === "number") return value.toString()
+        if (typeof value === "boolean") return value ? "True" : "False"
+        if (Array.isArray(value)) {
+          return `[${value.map(item => toPythonLiteral(item)).join(", ")}]`
+        }
+        if (typeof value === "object") {
+          const items = Object.keys(value).map(key => {
+            const pyKey = JSON.stringify(key)
+            const pyValue = toPythonLiteral(value[key])
+            return `${pyKey}: ${pyValue}`
+          }).join(", ")
+          return `{${items}}`
+        }
+        return JSON.stringify(value)
+      }
+      
+      const pythonDict = toPythonLiteral(parsedValue)
+      
+      // Generate real code with mcp.call() instead of simulated execution
       const code = `# Example: ${tool.name}
-import json
-
 # Tool input
-input_data = ${tool.example_usage}
+tool_input = ${pythonDict}
 
-# Simulated tool execution
-print(f"Executing {tool.name} with input:")
-print(json.dumps(input_data, indent=2))
+# Call the tool
+print(f'Executing ${tool.name} with input:')
+print(json.dumps(tool_input, indent=2))
+
+# Make the tool call
+try:
+    result = mcp.call(
+        "${tool.name}",
+        tool_input
+    )
+    print('\\nTool result:')
+    print(json.dumps(result, indent=2))
+except Exception as e:
+    print(f'\\nError calling tool: {e}')
+    raise
 `
       onExecute(code)
     }

@@ -6,6 +6,7 @@ import { ToolDetails } from "@/components/tool-details"
 import { TerminalView } from "@/components/terminal-view"
 import { TelemetryDashboard } from "@/components/telemetry-dashboard"
 import { ThemeToggle } from "@/components/theme-toggle"
+import { AuthAvatar } from "@/components/auth-avatar"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, FileCode, Terminal } from "lucide-react"
 import type { MCPServer, MCPTool } from "@/lib/types"
@@ -27,7 +28,7 @@ export default function Home() {
 
   return (
     <div className="flex h-screen flex-col bg-gradient-to-br from-background via-background to-accent/5 overflow-hidden">
-      <header className="border-b border-border/50 bg-card/80 backdrop-blur-sm px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
+      <header className="relative z-50 border-b border-border/50 bg-card/80 backdrop-blur-sm px-3 sm:px-6 py-3 sm:py-4 flex-shrink-0">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold tracking-tight bg-gradient-to-br from-foreground to-foreground/60 bg-clip-text text-transparent truncate">
@@ -38,6 +39,7 @@ export default function Home() {
           <div className="flex items-center gap-4">
             <TelemetryDashboard />
             <ThemeToggle />
+            <AuthAvatar />
           </div>
         </div>
       </header>

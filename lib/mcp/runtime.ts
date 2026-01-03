@@ -1,4 +1,3 @@
-import { ChildProcess } from "child_process"
 import { StdioTransport, HttpTransport, MCPTransport } from "./transport"
 import { createClient } from "@/lib/supabase/server"
 
@@ -6,7 +5,7 @@ export interface MCPServerInstanceConfig {
   id: string
   user_id: string
   server_id: string
-  account_id: string
+  account_id: string | null
   transport_type: "stdio" | "http"
   command?: string
   args?: string[]
@@ -15,18 +14,26 @@ export interface MCPServerInstanceConfig {
   port?: number
 }
 
+export interface MCPLogEntry {
+  timestamp: string
+  level: "stdout" | "stderr"
+  message: string
+}
+
 /**
  * MCP Server Runtime Manager
  * Handles lifecycle of MCP server instances
  */
 export class MCPServerRuntime {
   private instances = new Map<string, MCPTransport>()
+  private logs = new Map<string, MCPLogEntry[]>()
 
   /**
    * Start an MCP server instance
    */
   async startInstance(config: MCPServerInstanceConfig): Promise<MCPTransport> {
-    const instanceKey = `${config.user_id}:${config.server_id}:${config.account_id}`
+    const instanceKey = `${config.user_id}:${config.server_id}:${config.account_id ?? 'null'}`
+    this.logs.set(config.id, [])
 
     // Check if instance already exists
     if (this.instances.has(instanceKey)) {
@@ -44,7 +51,12 @@ export class MCPServerRuntime {
       if (!config.command) {
         throw new Error("Command required for stdio transport")
       }
-      transport = new StdioTransport(config.command, config.args || [], config.env)
+      transport = new StdioTransport(
+        config.command,
+        config.args || [],
+        config.env,
+        (line, level) => this.appendLog(config.id, level, line)
+      )
     } else if (config.transport_type === "http") {
       if (!config.url) {
         throw new Error("URL required for HTTP transport")
@@ -65,42 +77,55 @@ export class MCPServerRuntime {
   /**
    * Stop an MCP server instance
    */
-  async stopInstance(userId: string, serverId: string, accountId: string): Promise<void> {
-    const instanceKey = `${userId}:${serverId}:${accountId}`
+  async stopInstance(userId: string, serverId: string, accountId: string | null): Promise<void> {
+    const instanceKey = `${userId}:${serverId}:${accountId ?? 'null'}`
     const transport = this.instances.get(instanceKey)
 
     if (transport) {
+      console.log(`[MCP Runtime] Stopping transport for key: ${instanceKey}`)
       await transport.close()
       this.instances.delete(instanceKey)
+      console.log(`[MCP Runtime] Transport stopped and removed from map`)
+    } else {
+      console.log(`[MCP Runtime] No transport found in memory for key: ${instanceKey}`)
     }
 
-    // Find instance ID from database
+    // Find instance ID from database and update status
     const supabase = await createClient()
-    const { data: instance } = await supabase
+    const { data: instance, error: instanceError } = await supabase
       .from("mcp_server_instances")
       .select("id")
       .eq("user_id", userId)
       .eq("server_id", serverId)
       .eq("account_id", accountId)
-      .single()
+      .maybeSingle()
+
+    if (instanceError) {
+      console.error("[MCP Runtime] Error looking up instance for stop:", instanceError)
+    }
 
     if (instance) {
+      console.log(`[MCP Runtime] Updating instance ${instance.id} status to stopped`)
       await this.updateInstanceStatus(instance.id, "stopped")
+      this.logs.delete(instance.id)
+      console.log(`[MCP Runtime] Instance ${instance.id} marked as stopped`)
+    } else {
+      console.log(`[MCP Runtime] No database instance found for userId=${userId}, serverId=${serverId}, accountId=${accountId}`)
     }
   }
 
   /**
    * Get transport for an instance
    */
-  getTransport(userId: string, serverId: string, accountId: string): MCPTransport | null {
-    const instanceKey = `${userId}:${serverId}:${accountId}`
+  getTransport(userId: string, serverId: string, accountId: string | null): MCPTransport | null {
+    const instanceKey = `${userId}:${serverId}:${accountId ?? 'null'}`
     return this.instances.get(instanceKey) || null
   }
 
   /**
    * Check if instance is running
    */
-  isInstanceRunning(userId: string, serverId: string, accountId: string): boolean {
+  isInstanceRunning(userId: string, serverId: string, accountId: string | null): boolean {
     const transport = this.getTransport(userId, serverId, accountId)
     return transport !== null && transport.isConnected()
   }
@@ -110,7 +135,7 @@ export class MCPServerRuntime {
    */
   private async updateInstanceStatus(instanceId: string, status: string): Promise<void> {
     const supabase = await createClient()
-    await supabase
+    const { data, error } = await supabase
       .from("mcp_server_instances")
       .update({
         status,
@@ -118,6 +143,14 @@ export class MCPServerRuntime {
         last_health_check: new Date().toISOString(),
       })
       .eq("id", instanceId)
+      .select()
+    
+    if (error) {
+      console.error(`[MCP Runtime] Failed to update instance ${instanceId} status to ${status}:`, error)
+      throw error
+    } else {
+      console.log(`[MCP Runtime] Successfully updated instance ${instanceId} status to ${status}`, data?.[0])
+    }
   }
 
   /**
@@ -155,6 +188,26 @@ export class MCPServerRuntime {
     }
     await Promise.all(promises)
     this.instances.clear()
+    this.logs.clear()
+  }
+
+  getLogs(instanceId: string): MCPLogEntry[] {
+    return this.logs.get(instanceId) || []
+  }
+
+  private appendLog(instanceId: string, level: "stdout" | "stderr", message: string) {
+    const trimmed = message.trim()
+    if (!trimmed) return
+    const entries = this.logs.get(instanceId) || []
+    entries.push({
+      timestamp: new Date().toISOString(),
+      level,
+      message: trimmed,
+    })
+    if (entries.length > 200) {
+      entries.shift()
+    }
+    this.logs.set(instanceId, entries)
   }
 }
 

@@ -6,7 +6,7 @@ import traceback
 from contextlib import redirect_stdout, redirect_stderr
 from typing import Any, Dict
 
-def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str = None) -> Dict[str, Any]:
+def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str = None, nexus_auth_token: str = None) -> Dict[str, Any]:
     """
     Execute Python code in a controlled sandbox environment.
     
@@ -28,6 +28,8 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
             os.environ["NEXUS_API_URL"] = nexus_api_url
         if server_instance_id:
             os.environ["NEXUS_SERVER_INSTANCE_ID"] = server_instance_id
+        if nexus_auth_token:
+            os.environ["NEXUS_AUTH_TOKEN"] = nexus_auth_token
         
         # Add nexus_sdk to Python path
         scripts_dir = os.path.dirname(os.path.abspath(__file__))
@@ -47,7 +49,11 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
                         base_url = nexus_api_url or os.environ.get('NEXUS_API_URL', 'http://localhost:3000')
                         # Create MCP instance with explicit parameters using the class directly
                         from nexus_sdk.mcp import MCP as MCPClass
-                        mcp_instance = MCPClass(base_url=base_url, server_instance_id=server_instance_id)
+                        mcp_instance = MCPClass(
+                            base_url=base_url,
+                            server_instance_id=server_instance_id,
+                            auth_token=nexus_auth_token
+                        )
                     except Exception as e:
                         # Log the error but don't fail - mcp just won't be available
                         print(f"Warning: Could not initialize MCP: {e}", file=sys.stderr)
@@ -68,6 +74,7 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
                         "True": True,
                         "False": False,
                         "None": None,
+                        "Exception": Exception,
                     },
                     "json": json,
                     "nexus_sdk": nexus_sdk,
@@ -93,6 +100,7 @@ def execute_code(code: str, nexus_api_url: str = None, server_instance_id: str =
                         "True": True,
                         "False": False,
                         "None": None,
+                        "Exception": Exception,
                     },
                     "json": json,
                 }
@@ -128,6 +136,7 @@ if __name__ == "__main__":
     # Format: {"code": "...", "nexus_api_url": "...", "server_instance_id": "..."}
     nexus_api_url = None
     server_instance_id = None
+    nexus_auth_token = None
     
     try:
         # Try to parse as JSON first (new format)
@@ -135,12 +144,13 @@ if __name__ == "__main__":
         code_input = data.get("code", code_input)
         nexus_api_url = data.get("nexus_api_url")
         server_instance_id = data.get("server_instance_id")
+        nexus_auth_token = data.get("nexus_auth_token")
     except (json.JSONDecodeError, ValueError):
         # Fallback to plain code (old format)
         pass
     
     # Execute and return result
-    execution_result = execute_code(code_input, nexus_api_url, server_instance_id)
+    execution_result = execute_code(code_input, nexus_api_url, server_instance_id, nexus_auth_token)
     
     # Print result as JSON
     print(json.dumps(execution_result))

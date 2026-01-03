@@ -12,6 +12,7 @@ To get all the tools showing up in your local Project Nexus instance, you need t
 6. **006_google_workspace_schema.sql** - Set up OAuth and Google Workspace tables
 7. **007_add_mcp_server_logos.sql** - Add logo_url column to mcp_servers table
 8. **008_add_new_mcp_servers.sql** - Add new servers (LangChain, Google Maps, Google Workspace) with tools
+9. **009_seed_all_servers_with_logos.sql** - Comprehensive seeding script for all servers with available logos (use this to sync local servers to production)
 
 ## How to Run Migrations
 
@@ -40,6 +41,7 @@ psql "postgresql://..." -f scripts/005_create_search_function.sql
 psql "postgresql://..." -f scripts/006_google_workspace_schema.sql
 psql "postgresql://..." -f scripts/007_add_mcp_server_logos.sql
 psql "postgresql://..." -f scripts/008_add_new_mcp_servers.sql
+psql "postgresql://..." -f scripts/009_seed_all_servers_with_logos.sql
 ```
 
 ### Option 3: Using PowerShell Script (Windows)

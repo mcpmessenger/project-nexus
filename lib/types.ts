@@ -35,6 +35,7 @@ export interface SandboxExecution {
   completed_at: string | null
   execution_time_ms: number | null
   error: string | null
+  server_instance_id: string | null
 }
 
 export interface SearchResult {
@@ -74,4 +75,19 @@ export interface MCPServerInstance {
   last_health_check: string | null
   created_at: string
   updated_at: string
+}
+
+export interface UserSecret {
+  id: string
+  user_id: string
+  key: string
+  value: string
+  created_at: string
+  updated_at: string
+}
+
+export interface MCPServerLogEntry {
+  timestamp: string
+  level: "stdout" | "stderr"
+  message: string
 }

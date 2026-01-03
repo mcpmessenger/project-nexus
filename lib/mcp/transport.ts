@@ -29,8 +29,15 @@ export class StdioTransport implements MCPTransport {
   private requestId = 0
   private pendingRequests = new Map<number, { resolve: (value: any) => void; reject: (error: any) => void }>()
   private buffer = ""
+  private logCallback?: (line: string, level: "stdout" | "stderr") => void
 
-  constructor(command: string, args: string[] = [], env?: NodeJS.ProcessEnv) {
+  constructor(
+    command: string,
+    args: string[] = [],
+    env?: NodeJS.ProcessEnv,
+    logCallback?: (line: string, level: "stdout" | "stderr") => void
+  ) {
+    this.logCallback = logCallback
     this.process = spawn(command, args, {
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
@@ -38,13 +45,17 @@ export class StdioTransport implements MCPTransport {
 
     // Handle stdout (responses from MCP server)
     this.process.stdout?.on("data", (data: Buffer) => {
-      this.buffer += data.toString()
+      const text = data.toString()
+      this.logCallback?.(text, "stdout")
+      this.buffer += text
       this.processBuffer()
     })
 
     // Handle stderr (errors/logs)
     this.process.stderr?.on("data", (data: Buffer) => {
-      console.error("[MCP Server stderr]:", data.toString())
+      const text = data.toString()
+      this.logCallback?.(text, "stderr")
+      console.error("[MCP Server stderr]:", text)
     })
 
     // Handle process exit
@@ -130,8 +141,27 @@ export class StdioTransport implements MCPTransport {
 
   async close(): Promise<void> {
     this.rejectAllPending(new Error("Transport closed"))
-    if (this.process && !this.process.killed) {
-      this.process.kill()
+    if (this.process && !this.process.killed && this.process.exitCode === null) {
+      console.log(`[StdioTransport] Killing process ${this.process.pid}`)
+      const platform = process.platform
+      
+      if (platform === "win32") {
+        // Windows: use kill() without signal (sends SIGKILL equivalent)
+        this.process.kill()
+      } else {
+        // Unix: try SIGTERM first, then SIGKILL
+        this.process.kill('SIGTERM')
+        // Give it a moment to gracefully shutdown
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        // Force kill if still running
+        if (this.process && !this.process.killed && this.process.exitCode === null) {
+          console.log(`[StdioTransport] Force killing process ${this.process.pid}`)
+          this.process.kill('SIGKILL')
+        }
+      }
+      
+      // Wait a bit to ensure process is killed
+      await new Promise(resolve => setTimeout(resolve, 500))
     }
   }
 

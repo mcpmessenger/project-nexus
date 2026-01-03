@@ -1,10 +1,14 @@
-import { createClient } from "@/lib/supabase/server"
+import { createClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { mcpRuntime } from "@/lib/mcp/runtime"
 import { NextResponse } from "next/server"
 
 export async function POST(request: Request) {
   try {
     const { server_instance_id, method, params } = await request.json()
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/54f66928-ac43-4802-8101-eb785b4ee966',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'call/route.ts:8',message:'MCP call request received',data:{serverInstanceId:server_instance_id,method,hasParams:!!params},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
 
     if (!server_instance_id || !method) {
       return NextResponse.json({ error: "server_instance_id and method are required" }, { status: 400 })
@@ -12,25 +16,79 @@ export async function POST(request: Request) {
 
     const supabase = await createClient()
 
-    // Get current user
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser()
+    // Get current user from bearer token or session
+    const authHeader = request.headers.get("authorization")
+    let user = null
+    let userError = null
+    let useServiceRole = false
+
+    if (authHeader?.toLowerCase().startsWith("bearer ")) {
+      const token = authHeader.slice(7).trim()
+      if (token) {
+        // Verify the token and get user
+        const result = await supabase.auth.getUser(token)
+        user = result.data.user
+        userError = result.error
+        useServiceRole = true // Use service role for bearer token auth (RLS doesn't work with bearer tokens)
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/54f66928-ac43-4802-8101-eb785b4ee966',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'call/route.ts:26',message:'Bearer token auth result',data:{userId:user?.id,hasError:!!userError,error:userError?.message},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      }
+    } else {
+      // Fall back to session-based auth
+      const result = await supabase.auth.getUser()
+      user = result.data.user
+      userError = result.error
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/54f66928-ac43-4802-8101-eb785b4ee966',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'call/route.ts:34',message:'Session auth result',data:{userId:user?.id,hasError:!!userError},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
+    }
 
     if (userError || !user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
+    // Use service role client for bearer token auth (bypasses RLS, but we still verify user_id manually)
+    let queryClient
+    try {
+      queryClient = useServiceRole ? createServiceRoleClient() : supabase
+    } catch (error: any) {
+      if (error.message?.includes('SUPABASE_SERVICE_ROLE_KEY')) {
+        console.error("[MCP Call] Service role key not set. Please add SUPABASE_SERVICE_ROLE_KEY to your .env.local file.")
+        return NextResponse.json({ 
+          error: "Server configuration error: SUPABASE_SERVICE_ROLE_KEY is not set. Please add it to your .env.local file. Get it from Supabase Dashboard → Settings → API → service_role key" 
+        }, { status: 500 })
+      }
+      throw error
+    }
+
     // Get server instance
-    const { data: instance, error: instanceError } = await supabase
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/54f66928-ac43-4802-8101-eb785b4ee966',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'call/route.ts:42',message:'Looking up instance in DB',data:{serverInstanceId:server_instance_id,userId:user.id,useServiceRole},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
+    
+    const { data: instance, error: instanceError } = await queryClient
       .from("mcp_server_instances")
       .select("id, user_id, server_id, account_id, transport_type, status")
       .eq("id", server_instance_id)
       .eq("user_id", user.id)
-      .single()
+      .maybeSingle()
+      
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/54f66928-ac43-4802-8101-eb785b4ee966',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'call/route.ts:49',message:'Instance lookup result',data:{found:!!instance,instanceId:instance?.id,instanceUserId:instance?.user_id,instanceStatus:instance?.status,hasError:!!instanceError,error:instanceError?.message,errorCode:instanceError?.code},timestamp:Date.now(),sessionId:'debug-session',runId:'run1',hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
 
-    if (instanceError || !instance) {
+    if (instanceError) {
+      console.error("[MCP Call] Instance lookup error:", instanceError)
+      console.error("[MCP Call] Looking for instance_id:", server_instance_id)
+      console.error("[MCP Call] User ID:", user.id)
+      return NextResponse.json({ error: `Instance lookup failed: ${instanceError.message}` }, { status: 500 })
+    }
+
+    if (!instance) {
+      console.error("[MCP Call] Instance not found - no matching record")
+      console.error("[MCP Call] Looking for instance_id:", server_instance_id)
+      console.error("[MCP Call] User ID:", user.id)
       return NextResponse.json({ error: "Instance not found" }, { status: 404 })
     }
 
@@ -50,10 +108,16 @@ export async function POST(request: Request) {
       const result = await transport.send(method, params)
       return NextResponse.json({ result })
     } catch (error: any) {
-      return NextResponse.json({ error: error.message || "MCP call failed" }, { status: 500 })
+      console.error("[MCP Call] Transport error:", error)
+      console.error("[MCP Call] Method:", method)
+      console.error("[MCP Call] Params:", JSON.stringify(params, null, 2))
+      const errorMessage = error?.message || error?.toString() || "MCP call failed"
+      return NextResponse.json({ error: errorMessage }, { status: 500 })
     }
   } catch (error: any) {
     console.error("[MCP Call] Error:", error)
-    return NextResponse.json({ error: "Failed to execute MCP call" }, { status: 500 })
+    console.error("[MCP Call] Error stack:", error?.stack)
+    const errorMessage = error?.message || error?.toString() || "Failed to execute MCP call"
+    return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
 }
