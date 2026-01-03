@@ -42,10 +42,17 @@ export class StdioTransport implements MCPTransport {
     let processError: Error | null = null
     let errorHandlerFired = false
     
-    this.process = spawn(command, args, {
+    // On Windows, use shell: true to properly resolve .cmd files (like npx.cmd)
+    // Without this, spawn() won't find commands like "npx" even if they're in PATH
+    const spawnOptions: any = {
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
-    })
+    }
+    if (process.platform === "win32") {
+      spawnOptions.shell = true
+    }
+    
+    this.process = spawn(command, args, spawnOptions)
 
     // Handle process errors (including ENOENT - command not found)
     this.process.on("error", (error) => {
