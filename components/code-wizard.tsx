@@ -291,10 +291,54 @@ export function CodeWizard({ tool, onCodeGenerated }: CodeWizardProps) {
   const [copied, setCopied] = useState(false)
   const [secretMap, setSecretMap] = useState<Record<string, string>>({})
 
-  // Reset form data when tool changes
+  // Reset form data when tool changes and prepopulate with example if available
   useEffect(() => {
+    if (!tool) {
+      setFormData({})
+      return
+    }
+
+    // Try to prepopulate from example_usage
+    if (tool.example_usage) {
+      try {
+        let exampleValue = tool.example_usage.trim()
+        let parsedValue: any
+
+        // Try to parse as JSON first
+        try {
+          parsedValue = JSON.parse(exampleValue)
+        } catch {
+          // If not JSON, try to extract JSON from text like "Search the web: {...}"
+          const jsonMatch = exampleValue.match(/\{[\s\S]*\}/)
+          if (jsonMatch) {
+            try {
+              parsedValue = JSON.parse(jsonMatch[0])
+            } catch {
+              // If still can't parse, skip prepopulation
+              setFormData({})
+              return
+            }
+          } else {
+            // No JSON found, skip prepopulation
+            setFormData({})
+            return
+          }
+        }
+
+        // If we successfully parsed an object, use it to populate formData
+        if (parsedValue && typeof parsedValue === "object" && !Array.isArray(parsedValue)) {
+          console.log("[CodeWizard] Prepopulating form with example:", parsedValue)
+          setFormData(parsedValue)
+          return
+        }
+      } catch (error) {
+        console.error("[CodeWizard] Failed to parse example_usage:", error)
+      }
+    }
+
+    // If no example or parsing failed, start with empty form
     setFormData({})
-  }, [tool?.id])
+  }, [tool?.id, tool?.example_usage])
 
   useEffect(() => {
     let isMounted = true
