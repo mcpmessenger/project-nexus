@@ -169,6 +169,26 @@ export class MCPServerRuntime {
 
       // Re-provision using reconstructed config
       const recoveredTransport = await this.startInstance(config)
+      
+      // Update process_id in database if stdio transport
+      if (config.transport_type === "stdio") {
+        try {
+          const process = (recoveredTransport as any).getProcess?.()
+          const processId = process?.pid
+          if (processId) {
+            const supabase = createServiceRoleClient()
+            await supabase
+              .from("mcp_server_instances")
+              .update({ process_id: processId })
+              .eq("id", instanceId)
+            console.log(`[MCP Runtime] Updated process_id to ${processId} for recovered instance ${instanceId}`)
+          }
+        } catch (processIdError) {
+          console.error(`[MCP Runtime] Failed to update process_id for recovered instance:`, processIdError)
+          // Don't fail recovery if process_id update fails
+        }
+      }
+      
       console.log(`[MCP Runtime] Successfully recovered transport for instance ${instanceId}`)
       return recoveredTransport
     } catch (error: any) {
