@@ -2,6 +2,7 @@ import { StdioTransport, HttpTransport, MCPTransport } from "./transport"
 import { createClient, createServiceRoleClient } from "@/lib/supabase/server"
 import { decryptTokens } from "@/lib/oauth/google"
 import { writeFile, mkdir } from "fs/promises"
+import { existsSync } from "fs"
 import { join } from "path"
 
 export interface MCPServerInstanceConfig {
@@ -252,12 +253,19 @@ export class MCPServerRuntime {
     let args: string[] = []
 
     if (server.name === "google-workspace-mcp" || server.install_command?.includes("google-workspace")) {
-      command = "npx"
+      command = this.findNpxCommand()
       args = ["-y", "@taylorwilsdon/google-workspace-mcp"]
     } else if (server.install_command) {
       const parts = server.install_command.split(" ")
-      command = parts[0]
-      args = parts.slice(1)
+      const firstPart = parts[0]
+      // If command is npx, use our finder function
+      if (firstPart === "npx") {
+        command = this.findNpxCommand()
+        args = parts.slice(1)
+      } else {
+        command = firstPart
+        args = parts.slice(1)
+      }
     } else {
       console.error(`[MCP Runtime] Server ${serverId} has no install_command`)
       return null
@@ -334,6 +342,40 @@ export class MCPServerRuntime {
       args,
       env,
     }
+  }
+
+  /**
+   * Find npx command - handles cases where npx is not in PATH
+   * On Windows, tries common Node.js installation paths
+   */
+  findNpxCommand(): string {
+    if (process.platform === "win32") {
+      // Try common Node.js installation locations on Windows
+      const nodePaths = [
+        process.env.PROGRAMFILES + "\\nodejs\\npx.cmd",
+        process.env["PROGRAMFILES(X86)"] + "\\nodejs\\npx.cmd",
+        process.env.LOCALAPPDATA + "\\Programs\\Microsoft VS Code\\resources\\app\\extensions\\node\\node\\npx.cmd",
+      ].filter(Boolean) // Remove undefined entries
+
+      // Also try to find it via npm (which should be in PATH if Node.js is installed)
+      // npm comes with Node.js and npx should be in the same directory
+      try {
+        // On Windows, npm is usually npm.cmd, and npx.cmd is in the same directory
+        // But we can't easily get that path without executing a command
+        // So we'll just try the common paths first, then fall back to "npx"
+        for (const path of nodePaths) {
+          if (existsSync(path)) {
+            console.log(`[MCP Runtime] Found npx at: ${path}`)
+            return path
+          }
+        }
+      } catch (e) {
+        // Ignore errors, fall back to "npx"
+      }
+    }
+    
+    // Fallback: try "npx" (might work if it's in PATH or system PATH)
+    return "npx"
   }
 
   /**

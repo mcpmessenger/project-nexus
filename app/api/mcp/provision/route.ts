@@ -100,12 +100,19 @@ export async function POST(request: Request) {
     let args: string[] = []
 
     if (server.name === "google-workspace-mcp" || server.install_command?.includes("google-workspace")) {
-      command = "npx"
+      command = mcpRuntime.findNpxCommand()
       args = ["-y", "@taylorwilsdon/google-workspace-mcp"]
     } else if (server.install_command) {
       const parts = server.install_command.split(" ")
-      command = parts[0]
-      args = parts.slice(1)
+      const firstPart = parts[0]
+      // If command is npx, use our finder function
+      if (firstPart === "npx") {
+        command = mcpRuntime.findNpxCommand()
+        args = parts.slice(1)
+      } else {
+        command = firstPart
+        args = parts.slice(1)
+      }
     } else {
       return NextResponse.json({ error: "Server install command not found" }, { status: 400 })
     }
