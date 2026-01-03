@@ -54,12 +54,28 @@ export class MCPServerRuntime {
       if (!config.command) {
         throw new Error("Command required for stdio transport")
       }
+      // Create transport - spawn errors are handled asynchronously via error event
+      // We need to wait a brief moment to check if spawn failed
       transport = new StdioTransport(
         config.command,
         config.args || [],
         config.env,
         (line, level) => this.appendLog(config.id, level, line)
       )
+      
+      // Give spawn a moment to fail (ENOENT errors fire immediately but asynchronously)
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
+      // Verify process actually started (check if process exists and has a PID)
+      const process = (transport as any).getProcess?.()
+      if (!process || process.killed || process.exitCode !== null) {
+        throw new Error(`Process failed to start: ${config.command} ${config.args?.join(" ") || ""}. Please ensure ${config.command} is installed and in your PATH.`)
+      }
+      
+      // Check if process has a PID (spawn succeeded)
+      if (!process.pid) {
+        throw new Error(`Command not found: ${config.command}. Please ensure ${config.command} is installed and in your PATH.`)
+      }
     } else if (config.transport_type === "http") {
       if (!config.url) {
         throw new Error("URL required for HTTP transport")
@@ -71,7 +87,7 @@ export class MCPServerRuntime {
 
     this.instances.set(instanceKey, transport)
 
-    // Update database
+    // Update database - only if transport was successfully created
     await this.updateInstanceStatus(config.id, "running")
 
     return transport

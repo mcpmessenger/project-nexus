@@ -38,9 +38,21 @@ export class StdioTransport implements MCPTransport {
     logCallback?: (line: string, level: "stdout" | "stderr") => void
   ) {
     this.logCallback = logCallback
+    
+    let processError: Error | null = null
+    let errorHandlerFired = false
+    
     this.process = spawn(command, args, {
       env: { ...process.env, ...env },
       stdio: ["pipe", "pipe", "pipe"],
+    })
+
+    // Handle process errors (including ENOENT - command not found)
+    this.process.on("error", (error) => {
+      processError = error
+      errorHandlerFired = true
+      console.error("[MCP Server] Process error:", error)
+      this.rejectAllPending(error)
     })
 
     // Handle stdout (responses from MCP server)
@@ -66,11 +78,14 @@ export class StdioTransport implements MCPTransport {
       }
     })
 
-    // Handle process errors
-    this.process.on("error", (error) => {
-      console.error("[MCP Server] Process error:", error)
-      this.rejectAllPending(error)
-    })
+    // Check for immediate spawn errors (ENOENT, etc.)
+    // On Windows, spawn errors are usually immediate; on Unix, they might be slightly delayed
+    // We can't block here, but we'll check in startInstance after a brief delay
+    if (!this.process.pid && process.platform === "win32") {
+      // On Windows, if PID is undefined immediately, spawn likely failed
+      // But we can't throw here as the error event is asynchronous
+      // The error handler above will fire and set processError
+    }
   }
 
   private processBuffer() {
