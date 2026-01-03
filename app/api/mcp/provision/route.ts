@@ -129,6 +129,21 @@ export async function POST(request: Request) {
       }
     }
 
+    // Add API keys from user_secrets (BRAVE_API_KEY, MAPS_API_KEY, etc.)
+    const { data: secrets, error: secretsError } = await supabase
+      .from("user_secrets")
+      .select("key, value")
+      .eq("user_id", user.id)
+
+    if (!secretsError && secrets) {
+      for (const secret of secrets) {
+        // Pass common API keys to MCP servers
+        if (secret.key === "BRAVE_API_KEY" || secret.key === "MAPS_API_KEY") {
+          env[secret.key] = secret.value
+        }
+      }
+    }
+
     // Create or update instance record
     const instanceData: any = {
       user_id: user.id,
